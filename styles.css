@@ -262,6 +262,40 @@ body {
     transition: none;
 }
 
+.rotation-controls {
+    position: absolute;
+    z-index: 200;
+    display: flex;
+    gap: 0.5rem;
+    pointer-events: all;
+}
+
+.rotate-btn {
+    background: #4a90e2;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.rotate-btn:hover {
+    background: #357abd;
+    transform: scale(1.1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.rotate-btn:active {
+    transform: scale(0.95);
+}
+
 .table-container {
     position: relative;
     display: flex;

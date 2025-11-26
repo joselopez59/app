@@ -1,55 +1,42 @@
-# Gestión de Mesas - Sala
+# Tischordnung - Saal
 
-Aplicación web simple para gestionar y organizar mesas en una sala mediante drag & drop.
+Aplicación web para gestionar y organizar mesas en una sala usando drag & drop.
 
-## Características
-
-- ✨ Interfaz moderna y atractiva
-- 🖱️ Drag & drop para mover mesas
-- ➕ Añadir mesas con diferentes capacidades (2, 4, 6, 8 personas)
-- 🗑️ Eliminar mesas
-- 📐 Plano de la sala con áreas especiales (Bar, DJ)
-- 💾 Guardado automático en localStorage
-
-## Uso
-
-Simplemente abre el archivo `index.html` en tu navegador. No se requiere instalación ni servidor.
-
-### Opciones:
-
-1. **Abrir directamente**: Haz doble clic en `index.html`
-2. **Servidor local** (recomendado para desarrollo):
-   ```bash
-   # Con Python 3
-   python -m http.server 8000
-   
-   # Con Node.js (http-server)
-   npx http-server
-   
-   # Con PHP
-   php -S localhost:8000
-   ```
-   Luego abre `http://localhost:8000` en tu navegador
-
-## Estructura de archivos
+## Estructura del Proyecto
 
 ```
 app/
-├── index.html      # Estructura HTML de la aplicación
-├── styles.css      # Estilos CSS
-├── app.js          # Lógica JavaScript
-└── README.md       # Este archivo
+├── src/
+│   ├── types/
+│   │   └── index.ts          # Tipos e interfaces TypeScript
+│   ├── services/
+│   │   ├── StorageService.ts # Gestión de localStorage
+│   │   └── TableService.ts   # Lógica de negocio de mesas
+│   └── app.ts                # Punto de entrada principal
+├── index.html               # HTML principal
+├── styles.css               # Estilos CSS
+├── tsconfig.json            # Configuración TypeScript
+├── vite.config.ts           # Configuración Vite
+└── package.json             # Dependencias
 ```
 
-## Funcionalidades
+## Desarrollo
 
-- **Añadir mesas**: Usa los botones en el panel lateral para añadir mesas de diferentes tamaños
-- **Mover mesas**: Haz clic y arrastra las mesas en el plano
-- **Eliminar mesas**: Usa el botón "×" en la lista de mesas
-- **Persistencia**: Las mesas se guardan automáticamente en el navegador (localStorage)
+```bash
+npm install
+npm run dev
+```
 
-## Tecnologías
+## Build
 
-- HTML5
-- CSS3
-- JavaScript (Vanilla, sin frameworks)
+```bash
+npm run build
+```
+
+## Características
+
+- Drag & drop de mesas
+- Rotación de mesas en incrementos de 45°
+- Diferentes tipos de mesas (normales, Tisch Royal, Geschenke)
+- Persistencia en localStorage
+- Elementos arrastrables (DJ, FotoBox)
