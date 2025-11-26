@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tischordnung - Saal</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <header class="app-header">
+            <h1>Tischordnung - Saal</h1>
+        </header>
+        <div class="app-content">
+            <div class="table-list">
+                <h2>Tische</h2>
+                <div class="table-controls">
+                    <button class="btn-add-table" data-seats="6">
+                        + Tisch 6 Personen
+                    </button>
+                    <button class="btn-add-table" data-seats="8">
+                        + Tisch 8 Personen
+                    </button>
+                    <button class="btn-add-royal" id="addRoyalBtn">
+                        + Tisch Royal
+                    </button>
+                </div>
+                <div id="royalControls" style="display: none; margin-top: 0.5rem;">
+                    <label style="font-size: 0.85rem; color: #666; display: block; margin-bottom: 0.5rem;">Anzahl Personen:</label>
+                    <input type="number" id="royalSeats" min="1" max="8" value="4" style="width: 100%; padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 0.5rem;">
+                    <button class="btn-add-table" id="confirmRoyalBtn" style="width: 100%;">
+                        Hinzufügen
+                    </button>
+                </div>
+                <div class="tables-list" id="tablesList">
+                    <p class="empty-message">Keine Tische vorhanden. Fügen Sie einen hinzu, um zu beginnen.</p>
+                </div>
+                <button class="btn-clear-all" id="clearAllBtn">
+                    🗑️ Alle Tische löschen
+                </button>
+            </div>
+            <div class="floor-plan-container">
+                <div class="floor-plan" id="floorPlan">
+                    <!-- SVG del plano de la sala -->
+                    <svg class="floor-plan-svg" viewBox="0 0 1000 500">
+                        <defs>
+                            <!-- ClipPath para mostrar solo la parte del bar que sobresale por abajo de la pared top -->
+                            <clipPath id="barClip">
+                                <rect x="165" y="20" width="300" height="50" />
+                            </clipPath>
+                        </defs>
+                        
+                        <!-- Paredes principales (10m x 5m = 1000cm x 500cm, escala 1px = 1cm) -->
+                        <!-- Grosor de pared: 20cm (realista) -->
+                        <rect x="0" y="0" width="1000" height="20" fill="#000" />
+                        <rect x="0" y="0" width="20" height="500" fill="#000" />
+                        <rect x="980" y="0" width="20" height="500" fill="#000" />
+                        <rect x="0" y="480" width="1000" height="20" fill="#000" />
+                        
+                        <!-- Puerta doble superior (180cm de ancho total, 90cm por hoja, centrada más a la derecha) -->
+                        <rect x="610" y="-1" width="180" height="22" fill="#fff" stroke="none" />
+                        
+                        <!-- Puerta en pared izquierda (90cm de ancho, 150cm de alto, centrada verticalmente) -->
+                        <rect x="-1" y="175" width="22" height="150" fill="#fff" stroke="none" />
+                        
+                        <!-- Abertura inferior (100cm de ancho) -->
+                        <rect x="450" y="479" width="100" height="22" fill="#fff" stroke="none" />
+                        
+                        <!-- Área Bar (300cm x 100cm, entre pared left y puerta top, centrado, sobresale por abajo de la pared top) -->
+                        <g clip-path="url(#barClip)">
+                            <rect x="165" y="0" width="300" height="100" fill="#e0e0e0" />
+                        </g>
+                        <text x="315" y="45" text-anchor="middle" font-size="20" fill="#666">Bar</text>
+                        
+                        
+                        <!-- Columnas en el medio de la sala (40cm de diámetro, alineadas verticalmente) -->
+                        <circle cx="600" cy="150" r="20" fill="#999" />
+                        <circle cx="600" cy="350" r="20" fill="#999" />
+                        
+                        <!-- Mesa DJ (mixer estilizado, girado 45° hacia la izquierda, 50% más pequeño, arrastrable) -->
+                        <g id="djMixer" transform="rotate(-45, 945, 430)">
+                            <!-- Base del mixer (50% más pequeño: 60x40) -->
+                            <rect x="915" y="410" width="60" height="40" fill="#e0e0e0" rx="3" />
+                            <!-- Jog wheel izquierdo (mucho más pequeño) -->
+                            <circle cx="930" cy="430" r="8" fill="#fff" stroke="#999" stroke-width="1" />
+                            <!-- Jog wheel derecho (mucho más pequeño) -->
+                            <circle cx="960" cy="430" r="8" fill="#fff" stroke="#999" stroke-width="1" />
+                            <!-- Controles centrales simples -->
+                            <circle cx="945" cy="420" r="2" fill="#999" />
+                            <circle cx="945" cy="430" r="2" fill="#999" />
+                            <circle cx="945" cy="440" r="2" fill="#999" />
+                        </g>
+                        
+                        <!-- FotoBox cuadrado (arrastrable, 30% más pequeño) -->
+                        <rect id="fotoBox" x="400" y="200" width="56" height="56" fill="#d0d0d0" stroke="#999" stroke-width="2" rx="4" style="cursor: move;" />
+                        <text id="fotoBoxText" x="428" y="232" text-anchor="middle" font-size="12" fill="#666" font-weight="bold" pointer-events="none">FotoBox</text>
+                    </svg>
+                    <!-- Las mesas se añadirán aquí dinámicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
