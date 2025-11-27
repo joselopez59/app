@@ -11,7 +11,12 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    host: true, // Permite acceso desde la red local (LAN)
     open: true
   }
 });
+
+
+
+
 

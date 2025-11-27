@@ -270,17 +270,31 @@ export class TableService {
     return this.tables.find(t => t.id === id);
   }
 
+  updateTableSeats(id: string, seats: number): void {
+    const table = this.tables.find(t => t.id === id);
+    if (table && !table.isRoyal && !table.isGeschenke) {
+      // Solo permitir cambiar a 6 u 8 sillas para mesas normales
+      if (seats === 6 || seats === 8) {
+        table.seats = seats;
+        this.saveTables();
+        this.onTablesChange();
+      }
+    }
+  }
+
   ensureGeschenkeTable(): void {
     if (!this.tables.find(t => t.id === 'geschenke-table')) {
+      // La posición se calculará en repositionGeschenkeAndFotoBox
+      // Por ahora, usar una posición temporal
       const geschenkeTable: Table = {
         id: 'geschenke-table',
-        x: 0, // Totalmente arrimada a la pared izquierda (x = 0)
-        y: 400, // Cerca del FotoBox, debajo de la puerta (puerta termina en y=325)
+        x: 50,
+        y: 600, // Posición temporal, se actualizará
         seats: 8,
         isRoyal: false,
         isGeschenke: true,
         tableNumber: 'Geschenke',
-        rotation: 90 // Rotada 90° para que el lado largo (61cm) esté vertical y pegado a la pared
+        rotation: 0 // Sin rotación inicial cuando está fuera
       };
       this.tables.push(geschenkeTable);
       this.saveTables();

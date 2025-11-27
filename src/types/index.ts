@@ -33,3 +33,7 @@ export const ROOM_HEIGHT = 500; // cm
 export const ROOM_MARGIN = 20; // cm
 export const FOTOBOX_SIZE = 56; // px (30% más pequeño: 80 * 0.7)
 
+
+
+
+

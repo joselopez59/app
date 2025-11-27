@@ -75,50 +75,23 @@
         </header>
         <div class="app-content">
             <div class="table-list">
-                <div class="table-controls">
-                    <button class="btn-add-table" data-seats="6">
-                        + Tisch 6 Personen
-                    </button>
-                    <button class="btn-add-table" data-seats="8">
-                        + Tisch 8 Personen
-                    </button>
-                    <button class="btn-add-royal" id="addRoyalBtn">
-                        + Tisch Royal
-                    </button>
-                </div>
-                <div class="table-list-header">
-                    <div>13 Tische, 100 personen max.</div>
-                </div>
-                <div id="royalControls" style="display: none; margin-top: 0.75rem; padding: 1rem; background: rgba(35, 35, 35, 0.6); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1);">
-                    <label style="font-size: 0.85rem; color: #b8b8b8; display: block; margin-bottom: 0.75rem; font-weight: 500;">Anzahl Personen:</label>
-                    <input type="number" id="royalSeats" min="1" max="8" value="4" style="width: 100%; padding: 0.75rem; background: rgba(20, 20, 20, 0.8); border: 1px solid rgba(212, 175, 55, 0.3); border-radius: 8px; margin-bottom: 0.75rem; color: #f5f5f5; font-size: 0.9rem;">
-                    <button class="btn-add-table" id="confirmRoyalBtn" style="width: 100%;">
-                        Hinzufügen
-                    </button>
-                </div>
-                <div class="tables-list-container">
-                    <div class="tables-list-wrapper">
-                        <div class="tables-list" id="tablesList">
-                            <p class="empty-message">Keine Tische vorhanden. Fügen Sie einen hinzu, um zu beginnen.</p>
-                        </div>
-                        <div class="tables-list-controls">
-                            <button class="scroll-btn scroll-up" id="scrollUpBtn" title="Nach oben">
-                                ↑
-                            </button>
-                            <button class="scroll-btn scroll-down" id="scrollDownBtn" title="Nach unten">
-                                ↓
-                            </button>
-                        </div>
+                <div class="personas-input-row">
+                    <div class="number-input-wrapper">
+                        <button class="number-input-btn number-input-decrease" id="decreasePersonasBtn">−</button>
+                        <input type="number" id="personasInput" min="10" max="100" value="38" class="number-input">
+                        <button class="number-input-btn number-input-increase" id="increasePersonasBtn">+</button>
                     </div>
                 </div>
+                <div id="calculatedTablesContainer" class="calculated-tables-container"></div>
                 <button class="btn-clear-all" id="clearAllBtn">
-                    Alle Tische löschen
+                    RESET
                 </button>
             </div>
-            <div class="floor-plan-container">
-                <div class="floor-plan" id="floorPlan">
-                    <!-- SVG del plano de la sala -->
-                    <svg class="floor-plan-svg" viewBox="0 0 1000 500">
+            <div class="right-column">
+                <div class="floor-plan-container">
+                    <div class="floor-plan" id="floorPlan">
+                        <!-- SVG del plano de la sala -->
+                        <svg class="floor-plan-svg" viewBox="0 0 1000 500">
                         <defs>
                             <!-- Patrón de baldosines para el suelo -->
                             <pattern id="tilePattern" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
@@ -153,34 +126,30 @@
                         <rect x="50" y="0" width="415" height="100" fill="#808080" stroke="#999" stroke-width="2" rx="4" ry="4" />
                         <text x="257.5" y="45" text-anchor="middle" font-size="20" fill="#ffffff">Bar</text>
                         
-                        <!-- Mesa DJ (diseño basado en imagen: rectángulo gris más largo horizontalmente con banda diagonal y círculos) -->
+                        <!-- Columna en el medio de la sala (40cm de diámetro) - al final para que sea visible -->
+                        <circle cx="600" cy="350" r="20" fill="#999999" stroke="#777777" stroke-width="2" />
+                        
+                        <!-- Mesa DJ (arrastrable, posicionada en la parte inferior) -->
                         <g id="djMixer" style="cursor: move;">
                             <!-- Rectángulo principal gris claro con borde igual al fotobox, más largo horizontalmente -->
                             <rect x="900" y="400" width="140" height="60" fill="#d0d0d0" stroke="#999" stroke-width="2" rx="4" />
                             
                             <!-- Banda diagonal definida por dos líneas paralelas -->
-                            <!-- Línea superior de la banda diagonal (desde esquina inferior izquierda hacia esquina superior derecha) -->
                             <line x1="900" y1="460" x2="1040" y2="400" stroke="#999" stroke-width="2" />
-                            <!-- Línea inferior de la banda diagonal (paralela, más abajo) -->
                             <line x1="900" y1="460" x2="1040" y2="420" stroke="#999" stroke-width="2" />
                             
-                            <!-- Círculos centrados en el eje largo del rectángulo (eje horizontal, cy=430 que es el centro vertical) -->
-                            <!-- Círculo izquierdo (centrado verticalmente en el eje largo) -->
+                            <!-- Círculos centrados en el eje largo del rectángulo -->
                             <circle cx="960" cy="430" r="16" fill="#ffffff" stroke="#999" stroke-width="2" />
-                            
-                            <!-- Círculo derecho (centrado verticalmente en el eje largo) -->
                             <circle cx="1020" cy="430" r="16" fill="#ffffff" stroke="#999" stroke-width="2" />
                         </g>
                         
-                        <!-- FotoBox cuadrado (arrastrable, 30% más pequeño) -->
-                        <rect id="fotoBox" x="400" y="200" width="56" height="56" fill="#d0d0d0" stroke="#999" stroke-width="2" rx="4" style="cursor: move;" />
-                        <text id="fotoBoxText" x="428" y="220" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" pointer-events="none">Foto</text>
-                        <text id="fotoBoxText2" x="428" y="235" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" pointer-events="none">Box</text>
-                        
-                        <!-- Columna en el medio de la sala (40cm de diámetro) - al final para que sea visible -->
-                        <circle cx="600" cy="350" r="20" fill="#999999" stroke="#777777" stroke-width="2" />
-                    </svg>
-                    <!-- Las mesas se añadirán aquí dinámicamente -->
+                        <!-- FotoBox cuadrado (arrastrable, posicionado en la parte inferior) -->
+                        <rect id="fotoBox" x="400" y="400" width="56" height="56" fill="#d0d0d0" stroke="#999" stroke-width="2" rx="4" style="cursor: move;" />
+                        <text id="fotoBoxText" x="428" y="420" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" pointer-events="none">Foto</text>
+                        <text id="fotoBoxText2" x="428" y="435" text-anchor="middle" font-size="10" fill="#666" font-weight="bold" pointer-events="none">Box</text>
+                        </svg>
+                        <!-- Las mesas se añadirán aquí dinámicamente -->
+                    </div>
                 </div>
             </div>
         </div>

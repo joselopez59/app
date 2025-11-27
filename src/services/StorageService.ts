@@ -63,9 +63,9 @@ export class StorageService {
       const savedDjRotation = localStorage.getItem(this.DJ_ROTATION_KEY);
       const savedFotoBoxPos = localStorage.getItem(this.FOTOBOX_POSITION_KEY);
 
-      let djPosition: Position = { x: 900, y: 400 };
+      let djPosition: Position = { x: 900, y: 400 }; // Posición inicial en el bottom del floor-plan
       let djRotation: number = 0;
-      let fotoBoxPosition: Position = { x: 50, y: 400 };
+      let fotoBoxPosition: Position = { x: 400, y: 400 }; // Posición inicial en el bottom del floor-plan
 
       if (savedDjPos) {
         djPosition = JSON.parse(savedDjPos);
@@ -83,8 +83,8 @@ export class StorageService {
     } catch (e) {
       console.warn('No se pudo cargar posiciones de localStorage:', e);
       return {
-        djPosition: { x: 900, y: 400 },
-        fotoBoxPosition: { x: 50, y: 400 },
+        djPosition: { x: 900, y: 400 }, // Posición inicial en el bottom del floor-plan
+        fotoBoxPosition: { x: 400, y: 400 }, // Posición inicial en el bottom del floor-plan
         djRotation: 0
       };
     }
