@@ -4,6 +4,7 @@ export class StorageService {
   private static TABLES_KEY = 'sala-tables';
   private static NEXT_ID_KEY = 'sala-next-id';
   private static DJ_POSITION_KEY = 'sala-dj-position';
+  private static DJ_ROTATION_KEY = 'sala-dj-rotation';
   private static FOTOBOX_POSITION_KEY = 'sala-fotobox-position';
 
   static saveTables(tables: Table[], nextId: number): void {
@@ -44,37 +45,47 @@ export class StorageService {
     }
   }
 
-  static saveDraggablePositions(djPosition: Position, fotoBoxPosition: Position): void {
+  static saveDraggablePositions(djPosition: Position, fotoBoxPosition: Position, djRotation?: number): void {
     try {
       localStorage.setItem(this.DJ_POSITION_KEY, JSON.stringify(djPosition));
+      if (djRotation !== undefined) {
+        localStorage.setItem(this.DJ_ROTATION_KEY, djRotation.toString());
+      }
       localStorage.setItem(this.FOTOBOX_POSITION_KEY, JSON.stringify(fotoBoxPosition));
     } catch (e) {
       console.warn('No se pudo guardar posiciones en localStorage:', e);
     }
   }
 
-  static loadDraggablePositions(): { djPosition: Position; fotoBoxPosition: Position } {
+  static loadDraggablePositions(): { djPosition: Position; fotoBoxPosition: Position; djRotation: number } {
     try {
       const savedDjPos = localStorage.getItem(this.DJ_POSITION_KEY);
+      const savedDjRotation = localStorage.getItem(this.DJ_ROTATION_KEY);
       const savedFotoBoxPos = localStorage.getItem(this.FOTOBOX_POSITION_KEY);
 
-      let djPosition: Position = { x: 945, y: 430 };
+      let djPosition: Position = { x: 900, y: 400 };
+      let djRotation: number = 0;
       let fotoBoxPosition: Position = { x: 50, y: 400 };
 
       if (savedDjPos) {
         djPosition = JSON.parse(savedDjPos);
       }
 
+      if (savedDjRotation) {
+        djRotation = parseFloat(savedDjRotation);
+      }
+
       if (savedFotoBoxPos) {
         fotoBoxPosition = JSON.parse(savedFotoBoxPos);
       }
 
-      return { djPosition, fotoBoxPosition };
+      return { djPosition, fotoBoxPosition, djRotation };
     } catch (e) {
       console.warn('No se pudo cargar posiciones de localStorage:', e);
       return {
-        djPosition: { x: 945, y: 430 },
-        fotoBoxPosition: { x: 50, y: 400 }
+        djPosition: { x: 900, y: 400 },
+        fotoBoxPosition: { x: 50, y: 400 },
+        djRotation: 0
       };
     }
   }
