@@ -7,11 +7,11 @@ import { TableService } from './services/TableService';
 let draggedTable: string | null = null;
 let draggedElement: DraggedElement = null;
 let dragOffset: DragOffset = { x: 0, y: 0 };
-let selectedTable: string | null = null;
-let isDragging: boolean = false;
 let djPosition: Position = { x: 900, y: 400 }; // Posición inicial en el bottom del floor-plan
-let djRotation: number = 0;
+let djRotation: number = 180; // Rotación inicial de 180°
 let djWasDragged: boolean = false;
+let tableWasDragged: boolean = false; // Rastrear si la mesa fue arrastrada
+let mouseDownPosition: Position | null = null; // Posición inicial del mousedown
 let fotoBoxPosition: Position = { x: 400, y: 400 }; // Posición inicial en el bottom del floor-plan
 
 // Estado para selección múltiple
@@ -22,13 +22,192 @@ let selectedTables: string[] = [];
 let selectionBox: HTMLElement | null = null;
 let initialTablePositions: Map<string, Position> = new Map();
 
+// Estado para zoom
+let floorPlanZoom: number = 1.0; // 1.0 = 100%, 1.5 = 150%
+
+// Función para toggle zoom del floor plan
+function toggleFloorPlanZoom(): void {
+  if (floorPlanZoom === 1.0) {
+    floorPlanZoom = 1.5;
+    floorPlan.classList.add('zoom-150');
+  } else {
+    floorPlanZoom = 1.0;
+    floorPlan.classList.remove('zoom-150');
+  }
+  StorageService.saveFloorPlanZoom(floorPlanZoom);
+}
+
 // Elementos del DOM
 const floorPlan = document.getElementById('floorPlan') as HTMLElement;
 const clearAllBtn = document.getElementById('clearAllBtn');
-const calculatedTablesContainer = document.getElementById('calculatedTablesContainer') as HTMLElement;
 
 // Servicio de mesas
 let tableService: TableService;
+
+// Añadir una persona de manera inteligente (sin destruir el layout)
+function addPersona(): void {
+  const personasInput = document.getElementById('personasInput') as HTMLInputElement;
+  if (!personasInput) return;
+  
+  const currentValue = parseInt(personasInput.value) || 38;
+  if (currentValue >= 100) return; // Límite máximo
+  
+  // Buscar mesas con menos de 8 personas (tanto en floor plan como en sidebar)
+  // Excluir mesas bloqueadas
+  const tables = tableService.getTables();
+  const availableTables = tables.filter(t => 
+    !t.isGeschenke && 
+    !t.isRoyal && 
+    !t.isLocked && // No incluir mesas bloqueadas
+    t.seats < 8 // Tiene espacio disponible
+  );
+  
+  if (availableTables.length > 0) {
+    // Encontrar la mesa con más personas pero menos de 8 (priorizar llenar mesas)
+    const tableToFill = availableTables.reduce((prev, current) => 
+      (prev.seats > current.seats) ? prev : current
+    );
+    
+    // Añadir una persona a esta mesa
+    if (tableService.addSeatToTable(tableToFill.id)) {
+      personasInput.value = (currentValue + 1).toString();
+      return;
+    }
+  }
+  
+  // Si no hay mesas con espacio, crear una nueva mesa
+  // Primero intentar colocarla en un espacio vacío del floor plan
+  const existingTables = tables.filter(t => !t.isGeschenke && !t.isRoyal);
+  const floorPlanTables = existingTables.filter(t => t.y < ROOM_HEIGHT);
+  
+  // Crear una mesa temporal para obtener sus dimensiones
+  const tempTable: Table = {
+    id: 'temp',
+    x: 0,
+    y: 0,
+    seats: 1,
+    isRoyal: false,
+    isGeschenke: false,
+    tableNumber: 1,
+    rotation: 0
+  };
+  const newTableDimensions = TableService.getTableDimensions(tempTable);
+  // Considerar el scale(2) aplicado en el renderizado
+  const scaledWidth = newTableDimensions.containerWidth * 2;
+  const scaledHeight = newTableDimensions.containerHeight * 2;
+  
+  // Buscar un espacio vacío en el floor plan
+  let positionFound = false;
+  let newX = ROOM_MARGIN;
+  let newY = ROOM_MARGIN;
+  
+  const step = 80; // Paso para buscar posiciones
+  for (let y = ROOM_MARGIN; y < ROOM_HEIGHT - scaledHeight - ROOM_MARGIN && !positionFound; y += step) {
+    for (let x = ROOM_MARGIN; x < ROOM_WIDTH - scaledWidth - ROOM_MARGIN && !positionFound; x += step) {
+      const isFree = !floorPlanTables.some(t => {
+        const dimensions = TableService.getTableDimensions(t);
+        // Considerar el scale(2) para las mesas existentes también
+        const existingScaledWidth = dimensions.containerWidth * 2;
+        const existingScaledHeight = dimensions.containerHeight * 2;
+        const margin = 20; // Margen mínimo entre mesas
+        return (x < t.x + existingScaledWidth + margin && 
+                x + scaledWidth > t.x - margin &&
+                y < t.y + existingScaledHeight + margin && 
+                y + scaledHeight > t.y - margin);
+      });
+      
+      if (isFree) {
+        newX = x;
+        newY = y;
+        positionFound = true;
+      }
+    }
+  }
+  
+  // Obtener el número correlativo para la nueva mesa
+  const maxTableNumber = existingTables.length > 0 
+    ? Math.max(...existingTables.map(t => typeof t.tableNumber === 'number' ? t.tableNumber : 0))
+    : 0;
+  const nextTableNumber = maxTableNumber + 1;
+  
+  // Crear nueva mesa con 1 persona
+  tableService.addTable(1, false);
+  const newTables = tableService.getTables().filter(t => !t.isGeschenke);
+  const newTable = newTables[newTables.length - 1];
+  if (newTable) {
+    // Asignar número correlativo
+    newTable.tableNumber = nextTableNumber;
+    
+    if (positionFound) {
+      // Posicionar la mesa en el floor plan en el espacio vacío encontrado
+      tableService.updateTablePosition(newTable.id, newX, newY);
+    } else {
+      // Si no hay espacio en el floor plan, colocarla en el sidebar
+      const startY = ROOM_HEIGHT + 50; // Posición especial para mesas en el sidebar
+      tableService.updateTablePosition(newTable.id, 0, startY);
+      
+      // Renderizar las mesas del sidebar
+      setTimeout(() => {
+        const sidebarTables = tableService.getTables().filter(t => !t.isGeschenke && t.y >= ROOM_HEIGHT && t.y < ROOM_HEIGHT + 200);
+        if (sidebarTables.length > 0) {
+          renderCalculatedTables(sidebarTables);
+        }
+      }, 50);
+    }
+    
+    // Guardar cambios
+    tableService.saveTables();
+    renderTables();
+  }
+  
+  personasInput.value = (currentValue + 1).toString();
+}
+
+// Remover una persona de manera inteligente (sin destruir el layout)
+function removePersona(): void {
+  const personasInput = document.getElementById('personasInput') as HTMLInputElement;
+  if (!personasInput) return;
+  
+  const currentValue = parseInt(personasInput.value) || 38;
+  if (currentValue <= 10) return; // Límite mínimo
+  
+  // Buscar mesas en el floor plan Y en el sidebar con más de 1 persona
+  const tables = tableService.getTables();
+  const availableTables = tables.filter(t => 
+    !t.isGeschenke && 
+    !t.isRoyal && 
+    !t.isLocked && // No incluir mesas bloqueadas
+    t.seats > 1 // Tiene más de 1 persona
+  );
+  
+  if (availableTables.length > 0) {
+    // Encontrar la mesa con menos personas (priorizar vaciar mesas pequeñas)
+    const tableToReduce = availableTables.reduce((prev, current) => 
+      (prev.seats < current.seats) ? prev : current
+    );
+    
+    // Remover una persona de esta mesa
+    if (tableService.removeSeatFromTable(tableToReduce.id)) {
+      personasInput.value = (currentValue - 1).toString();
+      return;
+    }
+  }
+  
+  // Si no hay mesas para reducir, eliminar la última mesa creada (del floor plan o sidebar)
+  const tablesToDelete = tables.filter(t => !t.isGeschenke);
+  if (tablesToDelete.length > 0) {
+    // Encontrar la mesa más reciente (mayor ID numérico)
+    const lastTable = tablesToDelete.reduce((prev, current) => {
+      const prevNum = parseInt(prev.id.replace('table-', ''));
+      const currentNum = parseInt(current.id.replace('table-', ''));
+      return currentNum > prevNum ? current : prev;
+    });
+    
+    const seatsToRemove = lastTable.seats;
+    tableService.deleteTable(lastTable.id);
+    personasInput.value = (currentValue - seatsToRemove).toString();
+  }
+}
 
 // Auto-configurar mesas según el número de personas
 function autoConfigureTables(): void {
@@ -46,31 +225,28 @@ function autoConfigureTables(): void {
   }
 
   // Calcular distribución de mesas:
-  // 1. Llenar mesas de 8 personas hasta su capacidad máxima
-  // 2. Llenar mesas de 6 personas si hace falta
-  // 3. Si quedan personas, crear una mesa normal con el número exacto de sillas
+  // Siempre que sea posible, mesas completas de 8 personas
+  // Solo la última mesa podrá tener menos de 8
+  // Si quedan 7 personas, crear una mesa de 8 con 7 sillas (no una mesa de 6 con 7)
   let remainingPersonas = validPersonas;
   const tablesToCreate: number[] = []; // Array con el número de sillas de cada mesa
 
-  // Primero, crear mesas completas de 8 personas
+  // Crear mesas completas de 8 personas (prioridad)
   const tables8 = Math.floor(remainingPersonas / 8);
   remainingPersonas = remainingPersonas % 8;
   for (let i = 0; i < tables8; i++) {
     tablesToCreate.push(8);
   }
 
-  // Luego, crear mesas completas de 6 personas si hace falta
+  // Si quedan personas, crear una última mesa
   if (remainingPersonas > 0) {
-    const tables6 = Math.floor(remainingPersonas / 6);
-    remainingPersonas = remainingPersonas % 6;
-    for (let i = 0; i < tables6; i++) {
-      tablesToCreate.push(6);
+    // Si quedan 7 personas, crear una mesa de 8 con 7 sillas (no una mesa de 6 con 7)
+    if (remainingPersonas === 7) {
+      tablesToCreate.push(7); // Mesa de 8 personas pero con 7 sillas visibles
+    } else {
+      // Para otros casos (1-6), crear mesa con el número exacto
+      tablesToCreate.push(remainingPersonas);
     }
-  }
-
-  // Si quedan personas que no llenan una mesa completa, crear una mesa normal con ese número exacto
-  if (remainingPersonas > 0) {
-    tablesToCreate.push(remainingPersonas);
   }
 
   // Limitar a máximo 13 mesas (según el requisito "Max. 13")
@@ -102,23 +278,50 @@ function autoConfigureTables(): void {
     // Encontrar la nueva mesa (la que no estaba antes)
     const newTable = tablesAfter.find(t => !tablesBefore.some(tb => tb.id === t.id));
     if (newTable) {
+      // Asegurar que la mesa tenga el número correcto de sillas
+      if (newTable.seats !== seats) {
+        console.warn(`Mesa ${newTable.id} tiene ${newTable.seats} sillas pero debería tener ${seats}, corrigiendo...`);
+        tableService.updateTableSeats(newTable.id, seats);
+        // Actualizar la referencia después de cambiar las sillas
+        const updatedTable = tableService.getTableById(newTable.id);
+        if (updatedTable && updatedTable.seats !== seats) {
+          console.error(`Error: No se pudo actualizar las sillas de la mesa ${newTable.id}`);
+        }
+      }
       // Posicionar la mesa en el área del sidebar (no visible en el floorPlan)
+      // Usar updateTablePosition que ahora permite y >= ROOM_HEIGHT
       tableService.updateTablePosition(newTable.id, 0, startY);
+      const finalTable = tableService.getTableById(newTable.id);
+      console.log(`Mesa ${newTable.id} creada con ${finalTable?.seats || seats} sillas, posicionada en sidebar: y=${startY}`);
+    } else {
+      console.warn('No se pudo encontrar la nueva mesa después de crearla');
     }
   }
+  
+  // Verificar que las mesas se hayan posicionado correctamente
+  const allTables = tableService.getTables().filter(t => !t.isGeschenke);
+  console.log('Mesas creadas - posiciones y:', allTables.map(t => ({ id: t.id, y: t.y })));
 
   // Renderizar las mesas calculadas en el contenedor de la kart 'Tische'
   // Usar setTimeout para asegurar que las mesas se hayan actualizado en el servicio
-  // y que renderTables() no haya limpiado el sidebar
   setTimeout(() => {
+    // Resetear números de mesas después de crear las nuevas
+    tableService.resetTableNumbers();
+    
     const updatedTables = tableService.getTables().filter(t => !t.isGeschenke && t.y >= ROOM_HEIGHT && t.y < ROOM_HEIGHT + 200);
-    if (updatedTables.length > 0 && calculatedTablesContainer) {
+    console.log('autoConfigureTables - Mesas del sidebar encontradas:', updatedTables.length);
+    if (updatedTables.length > 0) {
       renderCalculatedTables(updatedTables);
+    } else {
+      console.warn('No se encontraron mesas del sidebar para renderizar');
     }
     
     // Reposicionar Geschenke y FotoBox en un renglón debajo de las mesas calculadas
     repositionGeschenkeAndFotoBox();
-  }, 50);
+    
+    // Forzar un re-renderizado para asegurar que todo esté visible
+    renderTables();
+  }, 100);
 }
 
 // Renderizar mesas calculadas en el contenedor de la kart 'Tische'
@@ -130,10 +333,19 @@ function renderCalculatedTables(tables: Table[]): void {
     return;
   }
   
+  // Verificar que el contenedor esté en el sidebar ANTES de hacer nada
+  const tableList = container.closest('.table-list');
+  if (!tableList) {
+    console.error('ERROR CRÍTICO: calculatedTablesContainer no está dentro de .table-list!');
+    console.log('Container parent:', container.parentElement);
+    console.log('Container parent classes:', container.parentElement?.className);
+    console.log('Container está en floor-plan-container?', container.closest('.floor-plan-container') !== null);
+    console.log('Container está en floor-plan?', container.closest('.floor-plan') !== null);
+    return; // No renderizar si el contenedor no está en el lugar correcto
+  }
+  
   console.log('renderCalculatedTables llamado con', tables.length, 'mesas');
-  console.log('Contenedor encontrado:', container);
-  console.log('Contenedor parent:', container.parentElement);
-  console.log('Contenedor está en sidebar?', container.closest('.table-list') !== null);
+  console.log('✓ calculatedTablesContainer está correctamente en el sidebar');
   
   // Limpiar contenedor completamente
   container.innerHTML = '';
@@ -143,61 +355,132 @@ function renderCalculatedTables(tables: Table[]): void {
     return;
   }
   
-  const tablesPerRow = 4;
-  const spacingX = 60; // Espaciado horizontal entre mesas (más pequeño para el sidebar)
-  const spacingY = 60; // Espaciado vertical entre filas
+  // 3 COLUMNAS verticales, FILAS horizontales
+  const columnsCount = 3;
+  const spacingX = 5; // Espaciado horizontal entre columnas (reducido para que quepan más mesas)
+  const spacingY = 10; // Espaciado vertical entre filas (reducido para que quepan más mesas)
   
-  // Crear contenedor de filas
+  // Calcular cuántas filas necesitamos (redondeado hacia arriba)
+  const rowsCount = Math.ceil(tables.length / columnsCount);
+  
+  // Crear contenedor con scroll y botones de flechas
+  const scrollWrapper = document.createElement('div');
+  scrollWrapper.style.position = 'relative';
+  scrollWrapper.style.width = '100%';
+  scrollWrapper.style.overflow = 'hidden';
+  scrollWrapper.style.flex = '1';
+  scrollWrapper.style.minHeight = '0';
+  scrollWrapper.style.display = 'flex';
+  scrollWrapper.style.flexDirection = 'column';
+  
+  // Contenedor interno scrollable
+  const scrollableContent = document.createElement('div');
+  scrollableContent.style.overflowY = 'auto';
+  scrollableContent.style.overflowX = 'hidden';
+  scrollableContent.style.flex = '1';
+  scrollableContent.style.minHeight = '0';
+  scrollableContent.style.width = '100%';
+  scrollableContent.style.scrollBehavior = 'smooth';
+  scrollableContent.id = 'scrollableTablesContent';
+  
+  // Contenedor de FILAS (cada fila tiene 3 mesas = 3 columnas)
   const rowsContainer = document.createElement('div');
   rowsContainer.style.display = 'flex';
-  rowsContainer.style.flexDirection = 'column';
-  rowsContainer.style.alignItems = 'center';
+  rowsContainer.style.flexDirection = 'column'; // Filas apiladas verticalmente
+  rowsContainer.style.justifyContent = 'flex-start';
+  rowsContainer.style.alignItems = 'center'; // Centrar filas horizontalmente
   rowsContainer.style.gap = `${spacingY}px`;
-  rowsContainer.style.marginTop = '0.5rem';
   rowsContainer.style.width = '100%';
+  rowsContainer.style.paddingTop = '0.25rem';
+  rowsContainer.style.paddingBottom = '0.25rem';
   
-  // Agrupar mesas en filas
-  for (let i = 0; i < tables.length; i += tablesPerRow) {
-    const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.justifyContent = 'center';
-    row.style.alignItems = 'center';
-    row.style.gap = `${spacingX}px`;
-    row.style.flexWrap = 'wrap';
-    row.style.width = '100%';
-    
-    const rowTables = tables.slice(i, i + tablesPerRow);
-    rowTables.forEach(table => {
-      const tableElement = createTableElementForSidebar(table);
-      row.appendChild(tableElement);
-    });
-    
-    rowsContainer.appendChild(row);
-  }
+  // Crear las filas (cada fila tiene 3 mesas = 3 columnas)
+  // Asegurar alineación vertical entre filas
+  const rowDivs: HTMLElement[] = [];
   
-  // Asegurar que el contenedor esté en el sidebar
-  const tableList = container.closest('.table-list');
-  if (!tableList) {
-    console.error('ERROR CRÍTICO: calculatedTablesContainer no está dentro de .table-list!');
-    console.log('Container parent:', container.parentElement);
-    console.log('Container parent classes:', container.parentElement?.className);
-    console.log('Container está en floor-plan?', container.closest('.floor-plan-container') !== null);
-    console.log('Container está en floor-plan?', container.closest('.floor-plan') !== null);
-    // Intentar mover el contenedor al sidebar si está en el lugar equivocado
-    const correctParent = document.querySelector('.table-list');
-    if (correctParent && container.parentElement !== correctParent) {
-      console.log('Intentando mover calculatedTablesContainer al sidebar...');
-      // No mover, solo reportar el error
+  for (let row = 0; row < rowsCount; row++) {
+    const rowDiv = document.createElement('div');
+    rowDiv.style.display = 'flex';
+    rowDiv.style.flexDirection = 'row'; // 3 mesas en fila horizontal
+    rowDiv.style.justifyContent = 'center'; // Centrar mesas horizontalmente
+    rowDiv.style.alignItems = 'center';
+    rowDiv.style.gap = `${spacingX}px`;
+    rowDiv.style.width = '100%';
+    rowDiv.style.flexWrap = 'nowrap';
+    
+    // Añadir hasta 3 mesas a esta fila
+    for (let col = 0; col < columnsCount; col++) {
+      const tableIndex = row * columnsCount + col;
+      if (tableIndex < tables.length) {
+        const table = tables[tableIndex];
+        const tableElement = createTableElementForSidebar(table);
+        rowDiv.appendChild(tableElement);
+      }
     }
-    return; // No renderizar si el contenedor no está en el lugar correcto
-  } else {
-    console.log('✓ calculatedTablesContainer está correctamente en el sidebar');
+    
+    rowDivs.push(rowDiv);
+    rowsContainer.appendChild(rowDiv);
   }
   
-  container.appendChild(rowsContainer);
+  // No necesitamos forzar el mismo ancho a todas las filas
+  // Las filas se alinean a la izquierda naturalmente
+  
+  scrollableContent.appendChild(rowsContainer);
+  scrollWrapper.appendChild(scrollableContent);
+  
+  // Añadir botones de scroll si hay más de 3 filas
+  if (rowsCount > 3) {
+    // Botón arriba (ancho, en el top)
+    const scrollUpBtn = document.createElement('button');
+    scrollUpBtn.innerHTML = '↑';
+    scrollUpBtn.className = 'table-scroll-btn table-scroll-up';
+    scrollUpBtn.style.position = 'absolute';
+    scrollUpBtn.style.top = '0';
+    scrollUpBtn.style.left = '0';
+    scrollUpBtn.style.right = '0';
+    scrollUpBtn.style.width = '100%';
+    scrollUpBtn.style.height = '30px';
+    scrollUpBtn.style.zIndex = '10';
+    scrollUpBtn.style.borderRadius = '0';
+    scrollUpBtn.addEventListener('click', () => {
+      scrollableContent.scrollTop -= 150;
+    });
+    scrollWrapper.appendChild(scrollUpBtn);
+    
+    // Botón abajo (ancho, en el bottom)
+    const scrollDownBtn = document.createElement('button');
+    scrollDownBtn.innerHTML = '↓';
+    scrollDownBtn.className = 'table-scroll-btn table-scroll-down';
+    scrollDownBtn.style.position = 'absolute';
+    scrollDownBtn.style.bottom = '0';
+    scrollDownBtn.style.left = '0';
+    scrollDownBtn.style.right = '0';
+    scrollDownBtn.style.width = '100%';
+    scrollDownBtn.style.height = '30px';
+    scrollDownBtn.style.zIndex = '10';
+    scrollDownBtn.style.borderRadius = '0';
+    scrollDownBtn.addEventListener('click', () => {
+      scrollableContent.scrollTop += 150;
+    });
+    scrollWrapper.appendChild(scrollDownBtn);
+    
+    // Añadir padding al contenido scrollable para que no quede oculto por los botones
+    scrollableContent.style.paddingTop = '35px';
+    scrollableContent.style.paddingBottom = '35px';
+  }
+  
+  // Añadir el wrapper con scroll al contenedor principal
+  container.appendChild(scrollWrapper);
+  
+  // Asegurar que el contenedor sea visible
+  container.style.display = 'block';
+  container.style.visibility = 'visible';
+  container.style.opacity = '1';
+  
   console.log('✓ Mesas renderizadas en calculatedTablesContainer. Total elementos hijos:', container.children.length);
-  console.log('✓ Contenedor final:', container);
-  console.log('✓ Contenedor parent final:', container.parentElement);
+  console.log('✓ Columnas creadas:', columnsCount, 'Filas por columna:', rowsCount);
+  console.log('✓ Total mesas:', tables.length);
+  console.log('✓ Botones de scroll:', rowsCount > 3 ? 'Sí' : 'No');
 }
 
 // Crear elemento de mesa para el sidebar (versión más pequeña y arrastrable)
@@ -214,7 +497,7 @@ function createTableElementForSidebar(table: Table): HTMLElement {
   tableDiv.style.bottom = 'auto';
   tableDiv.style.margin = '0 auto';
   tableDiv.style.cursor = 'move';
-  tableDiv.style.transform = 'scale(0.6)'; // Hacer las mesas más pequeñas para el sidebar
+  tableDiv.style.transform = 'scale(0.55)'; // Reducido para que quepan más mesas en el sidebar
   tableDiv.style.transformOrigin = 'center center';
   tableDiv.style.display = 'inline-block'; // Para que se comporten como elementos inline-block
   
@@ -241,7 +524,22 @@ function createTableElementForSidebar(table: Table): HTMLElement {
     let seatsTop = 0, seatsBottom = 0, seatsRight = 0, seatsLeft = 0;
     const totalSeats = table.seats;
     
-    if (totalSeats <= 6) {
+    console.log(`Renderizando mesa ${table.id} con ${totalSeats} sillas`);
+    
+    if (totalSeats === 8) {
+      // Para 8 sillas: 3 en cada lado largo (arriba y abajo), 1 en cada lado corto (derecha e izquierda)
+      seatsTop = 3;
+      seatsBottom = 3;
+      seatsRight = 1;
+      seatsLeft = 1;
+    } else if (totalSeats === 7) {
+      // Para 7 sillas: mesa de 8 personas pero con 7 sillas visibles
+      // 3 arriba, 3 abajo, 1 a la derecha (o izquierda)
+      seatsTop = 3;
+      seatsBottom = 3;
+      seatsRight = 1;
+      seatsLeft = 0;
+    } else if (totalSeats <= 6) {
       if (totalSeats <= 2) {
         seatsTop = totalSeats;
       } else if (totalSeats <= 4) {
@@ -255,6 +553,7 @@ function createTableElementForSidebar(table: Table): HTMLElement {
         seatsLeft = remaining - seatsRight;
       }
     } else {
+      // Para más de 8 sillas: distribución similar
       seatsTop = Math.ceil(totalSeats / 4);
       seatsBottom = Math.ceil(totalSeats / 4);
       const remaining = totalSeats - seatsTop - seatsBottom;
@@ -269,7 +568,7 @@ function createTableElementForSidebar(table: Table): HTMLElement {
       seatsTop = Math.max(0, seatsTop - (currentTotal - totalSeats));
     }
     
-    // Renderizar sillas
+    // Renderizar sillas arriba
     for (let i = 0; i < seatsTop; i++) {
       const offset = seatsTop > 1 ? (i + 1) * (tableWidth / (seatsTop + 1)) - tableWidth / 2 : 0;
       const chair = document.createElement('div');
@@ -279,14 +578,17 @@ function createTableElementForSidebar(table: Table): HTMLElement {
       chairsContainer.appendChild(chair);
     }
     
-    if (seatsRight > 0) {
+    // Renderizar sillas derecha (múltiples si es necesario)
+    for (let i = 0; i < seatsRight; i++) {
+      const offset = seatsRight > 1 ? (i + 1) * (tableHeight / (seatsRight + 1)) - tableHeight / 2 : 0;
       const chair = document.createElement('div');
       chair.className = 'chair';
       chair.style.left = `${containerCenterX + tableWidth/2 + chairDistance - chairSize/2}px`;
-      chair.style.top = `${containerCenterY - chairSize/2}px`;
+      chair.style.top = `${containerCenterY + offset - chairSize/2}px`;
       chairsContainer.appendChild(chair);
     }
     
+    // Renderizar sillas abajo
     for (let i = 0; i < seatsBottom; i++) {
       const offset = seatsBottom > 1 ? (i + 1) * (tableWidth / (seatsBottom + 1)) - tableWidth / 2 : 0;
       const chair = document.createElement('div');
@@ -296,11 +598,13 @@ function createTableElementForSidebar(table: Table): HTMLElement {
       chairsContainer.appendChild(chair);
     }
     
-    if (seatsLeft > 0) {
+    // Renderizar sillas izquierda (múltiples si es necesario)
+    for (let i = 0; i < seatsLeft; i++) {
+      const offset = seatsLeft > 1 ? (i + 1) * (tableHeight / (seatsLeft + 1)) - tableHeight / 2 : 0;
       const chair = document.createElement('div');
       chair.className = 'chair';
       chair.style.left = `${containerCenterX - tableWidth/2 - chairDistance - chairSize/2}px`;
-      chair.style.top = `${containerCenterY - chairSize/2}px`;
+      chair.style.top = `${containerCenterY + offset - chairSize/2}px`;
       chairsContainer.appendChild(chair);
     }
   }
@@ -314,15 +618,27 @@ function createTableElementForSidebar(table: Table): HTMLElement {
   seats.className = 'table-seats';
   if (table.isGeschenke) {
     seats.textContent = 'Geschenke';
+    seats.style.fontSize = '0.75rem'; // Tamaño ajustado para que quepa dentro de la mesa
+    seats.style.lineHeight = '1.1'; // Ajustar line-height para mejor ajuste
   } else if (table.isRoyal) {
     seats.textContent = 'R';
   } else {
     seats.textContent = String(table.tableNumber || table.id.replace('table-', ''));
   }
   circle.appendChild(seats);
+  
+  // Añadir indicador de candado cerrado dentro del círculo si la mesa está bloqueada
+  if (table.isLocked) {
+    const lockIndicator = document.createElement('div');
+    lockIndicator.className = 'table-lock-indicator';
+    lockIndicator.textContent = '🔒';
+    lockIndicator.title = 'Mesa bloqueada';
+    circle.appendChild(lockIndicator);
+  }
 
   tableContainer.appendChild(chairsContainer);
   tableContainer.appendChild(circle);
+  
   tableDiv.appendChild(tableContainer);
   
   // Añadir event listener para arrastrar desde el sidebar al floorPlan
@@ -364,43 +680,107 @@ function handleSidebarTableMouseDown(e: MouseEvent, tableId: string): void {
   handleMouseDown(e, tableId);
 }
 
-// Calcular posición para Geschenke y FotoBox debajo de las mesas calculadas
+// Renderizar Geschenke en el contenedor de opciones
+function renderGeschenkeInOptions(table: Table): void {
+  const geschenkeContainer = document.getElementById('geschenkeContainer') as HTMLElement;
+  if (!geschenkeContainer) {
+    console.warn('geschenkeContainer no encontrado');
+    return;
+  }
+  
+  // Verificar si Geschenke ya está en el floorPlan
+  const existingInFloorPlan = floorPlan.querySelector(`[data-id="${table.id}"]`);
+  if (existingInFloorPlan) {
+    // Ya está en el floorPlan, no renderizar en Optionen
+    geschenkeContainer.innerHTML = '';
+    return;
+  }
+  
+  // Limpiar contenedor
+  geschenkeContainer.innerHTML = '';
+  
+  // Crear elemento de mesa para Geschenke
+  const tableElement = createTableElement(table);
+  tableElement.style.position = 'relative';
+  tableElement.style.left = 'auto';
+  tableElement.style.top = 'auto';
+  tableElement.style.transform = 'none';
+  tableElement.style.cursor = 'move';
+  geschenkeContainer.appendChild(tableElement);
+  
+  console.log('Geschenke renderizado en Optionen:', table.id);
+  
+  // Añadir event listener para arrastrar desde Optionen al floorPlan
+  tableElement.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleMouseDown(e, table.id);
+  });
+}
+
+// Renderizar FotoBox en el contenedor de opciones
+function renderFotoBoxInOptions(): void {
+  const fotoBoxContainer = document.getElementById('fotoBoxContainer') as HTMLElement;
+  if (!fotoBoxContainer) return;
+  
+  // Limpiar contenedor
+  fotoBoxContainer.innerHTML = '';
+  
+  // Crear elemento HTML para FotoBox
+  const fotoBoxDiv = document.createElement('div');
+  fotoBoxDiv.id = 'fotoBoxHtml';
+  fotoBoxDiv.style.width = `${FOTOBOX_SIZE}px`;
+  fotoBoxDiv.style.height = `${FOTOBOX_SIZE}px`;
+  fotoBoxDiv.style.background = '#d0d0d0';
+  fotoBoxDiv.style.border = '2px solid #999';
+  fotoBoxDiv.style.borderRadius = '4px';
+  fotoBoxDiv.style.cursor = 'move';
+  fotoBoxDiv.style.position = 'relative'; // Cambiar a relative para centrado horizontal
+  fotoBoxDiv.style.display = 'flex';
+  fotoBoxDiv.style.flexDirection = 'column';
+  fotoBoxDiv.style.alignItems = 'center';
+  fotoBoxDiv.style.justifyContent = 'center';
+  fotoBoxDiv.style.userSelect = 'none';
+  fotoBoxDiv.style.marginLeft = 'auto'; // Centrar horizontalmente
+  fotoBoxDiv.style.marginRight = 'auto'; // Centrar horizontalmente
+  // marginTop siempre 0
+  fotoBoxDiv.style.marginTop = '0';
+  fotoBoxDiv.style.left = 'auto';
+  fotoBoxDiv.style.top = 'auto';
+  
+  // Crear textos
+  const fotoText = document.createElement('div');
+  fotoText.textContent = 'Foto';
+  fotoText.style.fontSize = '10px';
+  fotoText.style.fontWeight = 'bold';
+  fotoText.style.color = '#666';
+  fotoText.style.lineHeight = '1';
+  
+  const boxText = document.createElement('div');
+  boxText.textContent = 'Box';
+  boxText.style.fontSize = '10px';
+  boxText.style.fontWeight = 'bold';
+  boxText.style.color = '#666';
+  boxText.style.lineHeight = '1';
+  
+  fotoBoxDiv.appendChild(fotoText);
+  fotoBoxDiv.appendChild(boxText);
+  
+  // Añadir event listener para drag
+  fotoBoxDiv.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    handleDraggableMouseDown(e, 'fotoBox');
+  });
+  
+  fotoBoxContainer.appendChild(fotoBoxDiv);
+}
+
+// Calcular posición para Geschenke y FotoBox (ya no necesario, pero mantenemos para compatibilidad)
 function repositionGeschenkeAndFotoBox(): void {
-  const tables = tableService.getTables().filter(t => !t.isGeschenke);
-  const spacingY = 70; // Espaciado vertical entre filas (mismo que en el sidebar)
-  const tablesPerRow = 4; // Número de mesas por fila
-  const startY = ROOM_HEIGHT + 50; // Posición inicial Y de las mesas calculadas (en el sidebar)
-  
-  // Calcular cuántas filas hay
-  const numRows = Math.ceil(tables.length / tablesPerRow);
-  const geschenkeY = startY + (numRows * spacingY) + spacingY; // Un renglón más abajo
-  
-  // Reposicionar Geschenke
-  const geschenkeTable = tableService.getTableById('geschenke-table');
-  if (geschenkeTable) {
-    const startX = ROOM_MARGIN + 50;
-    tableService.updateTablePosition('geschenke-table', startX, geschenkeY);
-  }
-  
-  // Reposicionar FotoBox
-  const startX = ROOM_MARGIN + 150;
-  fotoBoxPosition = { x: startX, y: geschenkeY };
-  const fotoBox = document.getElementById('fotoBox') as SVGRectElement | null;
-  const fotoBoxText = document.getElementById('fotoBoxText') as SVGTextElement | null;
-  const fotoBoxText2 = document.getElementById('fotoBoxText2') as SVGTextElement | null;
-  if (fotoBox) {
-    fotoBox.setAttribute('x', fotoBoxPosition.x.toString());
-    fotoBox.setAttribute('y', fotoBoxPosition.y.toString());
-    if (fotoBoxText) {
-      fotoBoxText.setAttribute('x', (fotoBoxPosition.x + FOTOBOX_SIZE / 2).toString());
-      fotoBoxText.setAttribute('y', (fotoBoxPosition.y + FOTOBOX_SIZE / 2 - 5).toString());
-    }
-    if (fotoBoxText2) {
-      fotoBoxText2.setAttribute('x', (fotoBoxPosition.x + FOTOBOX_SIZE / 2).toString());
-      fotoBoxText2.setAttribute('y', (fotoBoxPosition.y + FOTOBOX_SIZE / 2 + 8).toString());
-    }
-    StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
-  }
+  // Geschenke y FotoBox ahora se renderizan en el contenedor de opciones
+  // No necesitan reposicionamiento especial
+  renderTables();
 }
 
 // Inicialización
@@ -409,11 +789,20 @@ function init(): void {
   const { djPosition: savedDjPos, fotoBoxPosition: savedFotoBoxPos, djRotation: savedDjRot } = StorageService.loadDraggablePositions();
   djPosition = savedDjPos;
   djRotation = savedDjRot;
+  
+  // Cargar zoom del floor plan
+  floorPlanZoom = StorageService.loadFloorPlanZoom();
+  if (floorPlanZoom === 1.5) {
+    floorPlan.classList.add('zoom-150');
+  }
 
   // Inicializar servicio de mesas
   tableService = new TableService(() => {
     renderTables();
   });
+  
+  // Resetear números de mesa al inicializar la app, empezando por 1
+  tableService.resetTableNumbers();
   
   // Si FotoBox está dentro de la sala, reposicionarlo fuera (después de inicializar tableService)
   if (savedFotoBoxPos.y < ROOM_HEIGHT) {
@@ -423,9 +812,10 @@ function init(): void {
     const tablesPerRow = 6;
     const numRows = Math.ceil(tables.length / tablesPerRow);
     const fotoBoxY = startY + (numRows * spacingY) + spacingY;
-    fotoBoxPosition = { x: ROOM_MARGIN + 150, y: fotoBoxY };
+    fotoBoxPosition = { x: 0, y: fotoBoxY }; // x: 0 indica que está centrado en Optionen
   } else {
-    fotoBoxPosition = savedFotoBoxPos;
+    // Si está en Optionen, asegurar que esté centrado (x: 0)
+    fotoBoxPosition = { x: 0, y: savedFotoBoxPos.y };
   }
 
 
@@ -437,21 +827,13 @@ function init(): void {
 
   if (increasePersonasBtn && personasInput) {
     increasePersonasBtn.addEventListener('click', () => {
-      const currentValue = parseInt(personasInput.value) || 38;
-      if (currentValue < 100) {
-        personasInput.value = (currentValue + 1).toString();
-        autoConfigureTables();
-      }
+      addPersona(); // Usar función inteligente en lugar de autoConfigureTables
     });
   }
 
   if (decreasePersonasBtn && personasInput) {
     decreasePersonasBtn.addEventListener('click', () => {
-      const currentValue = parseInt(personasInput.value) || 38;
-      if (currentValue > 10) {
-        personasInput.value = (currentValue - 1).toString();
-        autoConfigureTables();
-      }
+      removePersona(); // Usar función inteligente en lugar de autoConfigureTables
     });
   }
 
@@ -480,6 +862,16 @@ function init(): void {
     });
   }
 
+  // Event listener para el botón de zoom
+  const zoomToggleBtn = document.getElementById('zoomToggleBtn');
+  if (zoomToggleBtn) {
+    zoomToggleBtn.addEventListener('click', () => {
+      toggleFloorPlanZoom();
+      // Actualizar el título del botón
+      zoomToggleBtn.title = floorPlanZoom === 1.5 ? 'Zoom 100%' : 'Zoom 150%';
+    });
+  }
+
   // Event listeners para drag & drop
   floorPlan.addEventListener('mousemove', handleMouseMove);
   floorPlan.addEventListener('mouseup', handleMouseUp);
@@ -490,29 +882,37 @@ function init(): void {
   document.addEventListener('mousemove', handleMouseMove);
   document.addEventListener('mouseup', handleMouseUp);
 
-  // Ocultar controles de rotación al hacer clic fuera de las mesas o DJ
+  // Ocultar controles y deseleccionar mesas al hacer clic fuera de las mesas o DJ
   floorPlan.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
-    if (target === floorPlan || target.classList.contains('floor-plan-svg') || 
-        (target.tagName !== 'g' && !target.closest('#djMixer'))) {
-      hideRotationControls();
+    // Verificar si el clic fue en una mesa, en los controles, o en DJ/FotoBox
+    const clickedTable = target.closest('.table');
+    const clickedControls = target.closest('.table-controls');
+    const clickedDj = target.closest('#djMixer');
+    const clickedFotoBox = target.closest('#fotoBox') || target.closest('#fotoBoxHtml');
+    
+    // Solo deseleccionar si el clic fue en el floor plan vacío o en el SVG (no en mesas ni controles)
+    if (!clickedTable && !clickedControls && !clickedDj && !clickedFotoBox) {
+      if (target === floorPlan || target.classList.contains('floor-plan-svg') || 
+          (target.tagName !== 'g' && target.tagName !== 'rect' && target.tagName !== 'text' && target.tagName !== 'circle')) {
+        clearSelection();
+      }
     }
   });
 
   // Event listener para RESET - reiniciar la app con el número de personas actual
   if (clearAllBtn) {
     clearAllBtn.addEventListener('click', () => {
-      // Obtener el número de personas actual
-      const personasInput = document.getElementById('personasInput') as HTMLInputElement;
-      const currentPersonas = personasInput ? parseInt(personasInput.value) || 38 : 38;
-      
-      // Borrar todas las mesas
-      tableService.clearAllTables();
+      // Borrar todas las mesas sin mostrar confirm (RESET silencioso)
+      // Esto también resetea el contador nextTableId a 1
+      tableService.clearAllTables(false);
       
       // Reposicionar Geschenke y FotoBox
       repositionGeschenkeAndFotoBox();
       
       // Recalcular mesas con el número de personas actual
+      // Esto creará nuevas mesas con números empezando desde 1
+      // resetTableNumbers se llama dentro de autoConfigureTables
       setTimeout(() => {
         autoConfigureTables();
       }, 50);
@@ -525,6 +925,12 @@ function init(): void {
 
   // Inicializar mesa Geschenke si no existe
   tableService.ensureGeschenkeTable();
+
+  // Asegurar que geschenkeContainer esté inicializado
+  const geschenkeContainer = document.getElementById('geschenkeContainer') as HTMLElement;
+  if (!geschenkeContainer) {
+    console.warn('geschenkeContainer no encontrado en el DOM');
+  }
 
   // Reposicionar Geschenke y FotoBox fuera de la sala si es necesario
   repositionGeschenkeAndFotoBox();
@@ -545,7 +951,6 @@ function initDraggableElements(): void {
   if (!svg) return;
 
   const djMixer = document.getElementById('djMixer') as SVGGElement | null;
-  const fotoBox = document.getElementById('fotoBox') as SVGRectElement | null;
 
   if (djMixer) {
     // Aplicar transformación inicial del DJ
@@ -579,30 +984,8 @@ function initDraggableElements(): void {
     djMixer.style.cursor = 'move';
   }
 
-  if (fotoBox) {
-    // Aplicar posición inicial del FotoBox
-    fotoBox.setAttribute('x', fotoBoxPosition.x.toString());
-    fotoBox.setAttribute('y', fotoBoxPosition.y.toString());
-    const fotoBoxText = document.getElementById('fotoBoxText') as SVGTextElement | null;
-    const fotoBoxText2 = document.getElementById('fotoBoxText2') as SVGTextElement | null;
-    if (fotoBoxText) {
-      fotoBoxText.setAttribute('x', (fotoBoxPosition.x + FOTOBOX_SIZE / 2).toString());
-      fotoBoxText.setAttribute('y', (fotoBoxPosition.y + FOTOBOX_SIZE / 2 - 5).toString());
-    }
-    if (fotoBoxText2) {
-      fotoBoxText2.setAttribute('x', (fotoBoxPosition.x + FOTOBOX_SIZE / 2).toString());
-      fotoBoxText2.setAttribute('y', (fotoBoxPosition.y + FOTOBOX_SIZE / 2 + 8).toString());
-    }
-    
-    // Añadir event listeners para FotoBox
-    fotoBox.addEventListener('mousedown', function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      handleDraggableMouseDown(e, 'fotoBox');
-    });
-    fotoBox.style.cursor = 'move';
-    fotoBox.style.pointerEvents = 'all';
-  }
+  // FotoBox ahora se renderiza como elemento HTML en el contenedor de opciones
+  // No necesita inicialización aquí
 }
 
 // Manejar inicio de drag para elementos arrastrables
@@ -623,8 +1006,15 @@ function handleDraggableMouseDown(e: MouseEvent, elementType: 'dj' | 'fotoBox'):
     dragOffset.x = (e.clientX - svgRect.left) - djPosition.x;
     dragOffset.y = (e.clientY - svgRect.top) - djPosition.y;
   } else if (elementType === 'fotoBox') {
-    dragOffset.x = (e.clientX - svgRect.left) - fotoBoxPosition.x;
-    dragOffset.y = (e.clientY - svgRect.top) - fotoBoxPosition.y;
+    const fotoBoxHtml = document.getElementById('fotoBoxHtml') as HTMLElement | null;
+    if (fotoBoxHtml) {
+      const rect = fotoBoxHtml.getBoundingClientRect();
+      dragOffset.x = e.clientX - rect.left;
+      dragOffset.y = e.clientY - rect.top;
+    } else {
+      dragOffset.x = (e.clientX - svgRect.left) - fotoBoxPosition.x;
+      dragOffset.y = (e.clientY - svgRect.top) - fotoBoxPosition.y;
+    }
   }
 }
 
@@ -653,8 +1043,8 @@ function showRotationControls(tableId: string): void {
   controlsDiv.className = 'rotation-controls';
   controlsDiv.setAttribute('data-table-id', tableId);
 
-  // Botón de rotar (solo si no es Tisch Royal y está dentro de la sala)
-  if (!table.isRoyal && isInsideRoom) {
+  // Botón de rotar (solo si no es Tisch Royal y está dentro de la sala, o si es Geschenke)
+  if ((!table.isRoyal && isInsideRoom) || table.isGeschenke) {
     const rotateBtn = document.createElement('button');
     rotateBtn.className = 'table-control-btn rotate-btn';
     rotateBtn.innerHTML = '↻';
@@ -668,41 +1058,80 @@ function showRotationControls(tableId: string): void {
 
   // Botón para cambiar entre 6 y 8 plazas (solo para mesas normales)
   if (!table.isRoyal && !table.isGeschenke) {
+    const seatsBtnContainer = document.createElement('div');
+    seatsBtnContainer.style.display = 'flex';
+    seatsBtnContainer.style.alignItems = 'center';
+    seatsBtnContainer.style.gap = '0.3rem';
+    
     const changeSeatsBtn = document.createElement('button');
     changeSeatsBtn.className = 'table-control-btn change-seats-btn';
     const newSeats = table.seats === 6 ? 8 : 6;
     changeSeatsBtn.innerHTML = `${newSeats}`;
     changeSeatsBtn.title = `Zu ${newSeats} Personen ändern`;
-    changeSeatsBtn.addEventListener('click', (e) => {
+    
+    // Si está bloqueado, poner fondo rojo
+    if (table.isLocked) {
+      changeSeatsBtn.style.background = 'linear-gradient(135deg, #4a1a1a 0%, #3a0f0f 100%)';
+      changeSeatsBtn.style.borderColor = 'rgba(200, 50, 50, 0.8)';
+      changeSeatsBtn.style.cursor = 'not-allowed';
+      changeSeatsBtn.style.opacity = '0.7';
+    } else {
+      changeSeatsBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        tableService.updateTableSeats(tableId, newSeats);
+        setTimeout(() => {
+          showRotationControls(tableId);
+        }, 10);
+      });
+    }
+    
+    seatsBtnContainer.appendChild(changeSeatsBtn);
+    
+    // Botón de candado a la derecha del botón de cambio de tipo
+    const lockBtn = document.createElement('button');
+    lockBtn.className = 'table-control-btn lock-btn';
+    lockBtn.innerHTML = table.isLocked ? '🔒' : '🔓'; // Candado cerrado o abierto
+    lockBtn.title = table.isLocked ? 'Typ entsperren' : 'Typ sperren (6/8)';
+    lockBtn.style.background = 'linear-gradient(135deg, #2a2a2a 0%, #1a1a1a 100%)';
+    lockBtn.style.border = '1px solid rgba(212, 175, 55, 0.4)';
+    lockBtn.style.fontSize = '14px';
+    lockBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      tableService.updateTableSeats(tableId, newSeats);
+      // Cambiar el estado de bloqueo de esta mesa específica
+      table.isLocked = !table.isLocked;
+      tableService.saveTables();
+      // Actualizar renderizado para mostrar/ocultar el indicador de candado
+      renderTables();
+      // Actualizar controles para reflejar el cambio
       setTimeout(() => {
         showRotationControls(tableId);
       }, 10);
     });
-    controlsDiv.appendChild(changeSeatsBtn);
+    
+    seatsBtnContainer.appendChild(lockBtn);
+    controlsDiv.appendChild(seatsBtnContainer);
   }
-
-  // Botón de duplicar
-  const duplicateBtn = document.createElement('button');
-  duplicateBtn.className = 'table-control-btn duplicate-btn';
-  duplicateBtn.innerHTML = '⧉';
-  duplicateBtn.title = 'Tisch duplizieren';
-  duplicateBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    tableService.duplicateTable(tableId);
-  });
-  controlsDiv.appendChild(duplicateBtn);
 
   // Botón de borrar
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'table-control-btn delete-btn';
   deleteBtn.innerHTML = '×';
-  deleteBtn.title = 'Tisch löschen';
-  deleteBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    tableService.deleteTable(tableId);
-  });
+  if (table.isGeschenke) {
+    deleteBtn.title = 'Geschenke löschen (zurück zu Optionen)';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Mover Geschenke de vuelta a Optionen (posición especial fuera de la sala)
+      tableService.updateTablePosition(tableId, 0, ROOM_HEIGHT + 300);
+      hideRotationControls();
+      renderTables();
+    });
+  } else {
+    deleteBtn.title = 'Tisch löschen';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      tableService.deleteTable(tableId);
+    });
+  }
   controlsDiv.appendChild(deleteBtn);
 
   const dimensions = TableService.getTableDimensions(table);
@@ -710,7 +1139,6 @@ function showRotationControls(tableId: string): void {
   controlsDiv.style.top = `${table.y - 35}px`;
 
   floorPlan.appendChild(controlsDiv);
-  selectedTable = tableId;
 }
 
 // Mostrar controles para selección múltiple (duplicar, borrar)
@@ -743,17 +1171,6 @@ function showMultiSelectionControls(): void {
   controlsDiv.className = 'rotation-controls multi-selection-controls';
   controlsDiv.setAttribute('data-selection', 'multi');
 
-  // Botón de duplicar grupo
-  const duplicateBtn = document.createElement('button');
-  duplicateBtn.className = 'table-control-btn duplicate-btn';
-  duplicateBtn.innerHTML = '⧉';
-  duplicateBtn.title = `${selectedTables.length} Tische duplizieren`;
-  duplicateBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    tableService.duplicateTables(selectedTables);
-  });
-  controlsDiv.appendChild(duplicateBtn);
-
   // Botón de borrar grupo
   const deleteBtn = document.createElement('button');
   deleteBtn.className = 'table-control-btn delete-btn';
@@ -778,7 +1195,6 @@ function showMultiSelectionControls(): void {
 function hideRotationControls(): void {
   const existingControls = floorPlan.querySelectorAll('.rotation-controls');
   existingControls.forEach(control => control.remove());
-  selectedTable = null;
 }
 
 // Rotar DJ
@@ -823,6 +1239,26 @@ function showDjRotationControls(): void {
     rotateDj();
   });
   controlsDiv.appendChild(rotateBtn);
+
+  // Botón de borrar DJ (vuelve a Optionen)
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'table-control-btn delete-btn';
+  deleteBtn.innerHTML = '×';
+  deleteBtn.title = 'DJ löschen (zurück zu Optionen)';
+  deleteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    // Mover DJ de vuelta a Optionen (posición especial)
+    djPosition = { x: 0, y: ROOM_HEIGHT + 400 };
+    djRotation = 180; // Resetear a rotación inicial de 180°
+    const djMixer = document.getElementById('djMixer') as SVGGElement | null;
+    if (djMixer) {
+      djMixer.setAttribute('transform', `translate(${djPosition.x - 900}, ${djPosition.y - 400}) rotate(${djRotation}, ${djPosition.x}, ${djPosition.y})`);
+    }
+    StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
+    hideRotationControls();
+    renderTables();
+  });
+  controlsDiv.appendChild(deleteBtn);
 
   const left = centerX + svgRect.left - floorPlan.getBoundingClientRect().left;
   const top = centerY + svgRect.top - floorPlan.getBoundingClientRect().top;
@@ -876,16 +1312,66 @@ function renderTables(): void {
   
   // Renderizar solo las mesas del floor-plan en el floorPlan
   // IMPORTANTE: NO renderizar mesas del sidebar aquí - se renderizan en el sidebar
+  // Geschenke se renderiza en el contenedor de opciones si no está en el floorPlan
   floorPlanTables.forEach(table => {
     // Verificar una vez más que no sea una mesa del sidebar
     const isSidebarTable = !table.isGeschenke && table.y >= ROOM_HEIGHT && table.y < ROOM_HEIGHT + 200;
-    if (!isSidebarTable) {
+    if (!isSidebarTable && !table.isGeschenke) {
       const tableElement = createTableElement(table);
       floorPlan.appendChild(tableElement);
+    } else if (table.isGeschenke) {
+      // Geschenke: renderizar en floorPlan si está dentro de la sala (y < ROOM_HEIGHT), sino en Optionen
+      if (table.y < ROOM_HEIGHT) {
+        // Está en el floorPlan
+        const tableElement = createTableElement(table);
+        floorPlan.appendChild(tableElement);
+        // Asegurar que se pueda arrastrar de vuelta a Optionen y mostrar controles al hacer click
+        tableElement.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleMouseDown(e, table.id);
+        });
+        // NO mostrar controles en click, se mostrarán en mouseup si no hubo drag
+      } else {
+        // Está en Optionen o fuera (y >= ROOM_HEIGHT), renderizar en Optionen
+        renderGeschenkeInOptions(table);
+      }
     } else {
       console.warn('ERROR: Intento de renderizar mesa del sidebar en floor-plan:', table.id, 'y:', table.y);
     }
   });
+  
+  // Renderizar Geschenke en Optionen si no está en el floorPlan (y >= ROOM_HEIGHT)
+  const geschenkeTable = tables.find(t => t.isGeschenke);
+  if (geschenkeTable) {
+    if (geschenkeTable.y >= ROOM_HEIGHT) {
+      // Está en Optionen o fuera, renderizar en Optionen
+      renderGeschenkeInOptions(geschenkeTable);
+    }
+    // Si está en el floorPlan (y < ROOM_HEIGHT), ya se renderizó arriba en el loop
+  } else {
+    // Si no existe Geschenke, asegurarse de que se cree
+    tableService.ensureGeschenkeTable();
+    // Re-renderizar después de crear
+    setTimeout(() => {
+      renderTables();
+    }, 10);
+  }
+  
+  // Renderizar FotoBox en el contenedor de opciones (si no está en el SVG o está oculto)
+  const fotoBoxSvg = document.getElementById('fotoBox') as SVGRectElement | null;
+  if (!fotoBoxSvg || fotoBoxSvg.style.display === 'none' || !fotoBoxSvg.parentElement) {
+    renderFotoBoxInOptions();
+  } else {
+    // Si está en el SVG, añadir event listener para arrastrarlo de vuelta a Optionen
+    fotoBoxSvg.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handleDraggableMouseDown(e, 'fotoBox');
+    });
+    fotoBoxSvg.style.cursor = 'move';
+    fotoBoxSvg.style.pointerEvents = 'all';
+  }
 
   // Renderizar las mesas del sidebar SOLO en el calculatedTablesContainer del sidebar
   // NO renderizarlas en el floor-plan
@@ -926,10 +1412,13 @@ function createTableElement(table: Table): HTMLElement {
   tableDiv.style.left = `${table.x}px`;
   tableDiv.style.top = `${table.y}px`;
 
+  // Aplicar escala doble para mesas en el floor plan
+  let transform = 'scale(2)';
   if (table.rotation && table.rotation !== 0) {
-    tableDiv.style.transform = `rotate(${table.rotation}deg)`;
-    tableDiv.style.transformOrigin = 'center center';
+    transform += ` rotate(${table.rotation}deg)`;
   }
+  tableDiv.style.transform = transform;
+  tableDiv.style.transformOrigin = 'center center';
 
   const dimensions = TableService.getTableDimensions(table);
   const { tableWidth, tableHeight, containerWidth, containerHeight } = dimensions;
@@ -980,7 +1469,20 @@ function createTableElement(table: Table): HTMLElement {
     // Distribución: priorizar arriba y abajo, luego lados
     let seatsTop = 0, seatsBottom = 0, seatsRight = 0, seatsLeft = 0;
     
-    if (totalSeats <= 6) {
+    if (totalSeats === 8) {
+      // Para 8 sillas: 3 en cada lado largo (arriba y abajo), 1 en cada lado corto (derecha e izquierda)
+      seatsTop = 3;
+      seatsBottom = 3;
+      seatsRight = 1;
+      seatsLeft = 1;
+    } else if (totalSeats === 7) {
+      // Para 7 sillas: mesa de 8 personas pero con 7 sillas visibles
+      // 3 arriba, 3 abajo, 1 a la derecha (o izquierda)
+      seatsTop = 3;
+      seatsBottom = 3;
+      seatsRight = 1;
+      seatsLeft = 0;
+    } else if (totalSeats <= 6) {
       // Para 1-6 sillas: distribución simple similar a mesa de 6
       if (totalSeats <= 2) {
         seatsTop = totalSeats;
@@ -996,7 +1498,7 @@ function createTableElement(table: Table): HTMLElement {
         seatsLeft = remaining - seatsRight;
       }
     } else {
-      // Para más de 6 sillas: distribución similar a mesa de 8
+      // Para más de 8 sillas: distribución similar
       seatsTop = Math.ceil(totalSeats / 4);
       seatsBottom = Math.ceil(totalSeats / 4);
       const remaining = totalSeats - seatsTop - seatsBottom;
@@ -1063,15 +1565,27 @@ function createTableElement(table: Table): HTMLElement {
   seats.className = 'table-seats';
   if (table.isGeschenke) {
     seats.textContent = 'Geschenke';
+    seats.style.fontSize = '0.75rem'; // Tamaño ajustado para que quepa dentro de la mesa
+    seats.style.lineHeight = '1.1'; // Ajustar line-height para mejor ajuste
   } else if (table.isRoyal) {
     seats.textContent = 'R'; // Tisch Royal muestra "R"
   } else {
     seats.textContent = String(table.tableNumber || table.id.replace('table-', ''));
   }
   circle.appendChild(seats);
+  
+  // Añadir indicador de candado cerrado dentro del círculo si la mesa está bloqueada
+  if (table.isLocked) {
+    const lockIndicator = document.createElement('div');
+    lockIndicator.className = 'table-lock-indicator';
+    lockIndicator.textContent = '🔒';
+    lockIndicator.title = 'Mesa bloqueada';
+    circle.appendChild(lockIndicator);
+  }
 
   tableContainer.appendChild(chairsContainer);
   tableContainer.appendChild(circle);
+  
   tableDiv.appendChild(tableContainer);
 
   tableDiv.addEventListener('mousedown', (e) => handleMouseDown(e, table.id));
@@ -1122,9 +1636,13 @@ function handleMouseDown(e: MouseEvent, tableId: string): void {
   e.preventDefault();
   e.stopPropagation(); // Evitar que se active la selección múltiple
   
+  // Guardar posición inicial para detectar si hubo movimiento
+  const rect = floorPlan.getBoundingClientRect();
+  mouseDownPosition = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  tableWasDragged = false;
+  
   // Si hay mesas seleccionadas y esta mesa está seleccionada, mover todas juntas
   if (selectedTables.includes(tableId) && selectedTables.length > 1) {
-    const rect = floorPlan.getBoundingClientRect();
     const table = tableService.getTableById(tableId);
     if (!table) return;
     
@@ -1160,7 +1678,6 @@ function handleMouseDown(e: MouseEvent, tableId: string): void {
     const table = tableService.getTableById(tableId);
     if (!table) return;
 
-    const rect = floorPlan.getBoundingClientRect();
     const offsetX = e.clientX - rect.left - table.x;
     const offsetY = e.clientY - rect.top - table.y;
 
@@ -1172,8 +1689,7 @@ function handleMouseDown(e: MouseEvent, tableId: string): void {
       tableElement.classList.add('dragging');
     }
     
-    // Mostrar controles inmediatamente al seleccionar
-    updateSelectionVisual();
+    // NO mostrar controles aquí, se mostrarán en mouseup si no hubo drag
   }
 }
 
@@ -1306,34 +1822,195 @@ function handleMouseMove(e: MouseEvent): void {
     }
     StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
   } else if (draggedElement === 'fotoBox') {
-    let x = (e.clientX - svgRect.left) - dragOffset.x;
-    let y = (e.clientY - svgRect.top) - dragOffset.y;
-
-    x = Math.max(20, Math.min(ROOM_WIDTH - FOTOBOX_SIZE - 20, x));
-    y = Math.max(20, Math.min(ROOM_HEIGHT - FOTOBOX_SIZE - 20, y));
-
-    fotoBoxPosition = { x, y };
-    const fotoBox = document.getElementById('fotoBox') as SVGRectElement | null;
-    const fotoBoxText = document.getElementById('fotoBoxText') as SVGTextElement | null;
-    const fotoBoxText2 = document.getElementById('fotoBoxText2') as SVGTextElement | null;
-    if (fotoBox) {
-      fotoBox.setAttribute('x', x.toString());
-      fotoBox.setAttribute('y', y.toString());
-      if (fotoBoxText) {
-        fotoBoxText.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
-        fotoBoxText.setAttribute('y', (y + FOTOBOX_SIZE / 2 - 5).toString());
-      }
-      if (fotoBoxText2) {
-        fotoBoxText2.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
-        fotoBoxText2.setAttribute('y', (y + FOTOBOX_SIZE / 2 + 8).toString());
+    // FotoBox ahora es un elemento HTML, puede moverse dentro de Optionen o al floorPlan
+    const fotoBoxHtml = document.getElementById('fotoBoxHtml') as HTMLElement | null;
+    if (fotoBoxHtml) {
+      const floorPlanRect = floorPlan.getBoundingClientRect();
+      const svg = floorPlan.querySelector('svg.floor-plan-svg') as SVGSVGElement | null;
+      
+      const optionsContainer = document.querySelector('.options-container-right') as HTMLElement;
+      const optionsRect = optionsContainer?.getBoundingClientRect();
+      
+      // Verificar si el mouse está sobre el floorPlan
+      if (e.clientX >= floorPlanRect.left && e.clientX <= floorPlanRect.right &&
+          e.clientY >= floorPlanRect.top && e.clientY <= floorPlanRect.bottom && svg) {
+        // Mover al floorPlan (coordenadas SVG)
+        const svgRect = svg.getBoundingClientRect();
+        let x = (e.clientX - svgRect.left) - dragOffset.x;
+        let y = (e.clientY - svgRect.top) - dragOffset.y;
+        
+        // Limitar dentro de la sala
+        x = Math.max(20, Math.min(ROOM_WIDTH - FOTOBOX_SIZE - 20, x));
+        y = Math.max(20, Math.min(ROOM_HEIGHT - FOTOBOX_SIZE - 20, y));
+        
+        fotoBoxPosition = { x, y };
+        // Mover el elemento al floorPlan SVG
+        fotoBoxHtml.style.display = 'none'; // Ocultar el HTML
+        // Crear o actualizar FotoBox en el SVG
+        let fotoBoxSvg = document.getElementById('fotoBox') as SVGRectElement | null;
+        if (!fotoBoxSvg) {
+          const svgElement = svg;
+          fotoBoxSvg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          fotoBoxSvg.id = 'fotoBox';
+          fotoBoxSvg.setAttribute('width', FOTOBOX_SIZE.toString());
+          fotoBoxSvg.setAttribute('height', FOTOBOX_SIZE.toString());
+          fotoBoxSvg.setAttribute('fill', '#d0d0d0');
+          fotoBoxSvg.setAttribute('stroke', '#999');
+          fotoBoxSvg.setAttribute('stroke-width', '2');
+          fotoBoxSvg.setAttribute('rx', '4');
+          fotoBoxSvg.style.cursor = 'move';
+          svgElement.appendChild(fotoBoxSvg);
+          
+          const fotoText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          fotoText.id = 'fotoBoxText';
+          fotoText.textContent = 'Foto';
+          fotoText.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
+          fotoText.setAttribute('y', (y + FOTOBOX_SIZE / 2 - 5).toString());
+          fotoText.setAttribute('text-anchor', 'middle');
+          fotoText.setAttribute('font-size', '10');
+          fotoText.setAttribute('fill', '#666');
+          fotoText.setAttribute('font-weight', 'bold');
+          fotoText.setAttribute('pointer-events', 'none');
+          svgElement.appendChild(fotoText);
+          
+          const boxText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          boxText.id = 'fotoBoxText2';
+          boxText.textContent = 'Box';
+          boxText.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
+          boxText.setAttribute('y', (y + FOTOBOX_SIZE / 2 + 8).toString());
+          boxText.setAttribute('text-anchor', 'middle');
+          boxText.setAttribute('font-size', '10');
+          boxText.setAttribute('fill', '#666');
+          boxText.setAttribute('font-weight', 'bold');
+          boxText.setAttribute('pointer-events', 'none');
+          svgElement.appendChild(boxText);
+        }
+        fotoBoxSvg.setAttribute('x', x.toString());
+        fotoBoxSvg.setAttribute('y', y.toString());
+        const fotoText = document.getElementById('fotoBoxText') as SVGTextElement | null;
+        const boxText = document.getElementById('fotoBoxText2') as SVGTextElement | null;
+        if (fotoText) {
+          fotoText.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
+          fotoText.setAttribute('y', (y + FOTOBOX_SIZE / 2 - 5).toString());
+        }
+        if (boxText) {
+          boxText.setAttribute('x', (x + FOTOBOX_SIZE / 2).toString());
+          boxText.setAttribute('y', (y + FOTOBOX_SIZE / 2 + 8).toString());
+        }
+        StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
+      } else if (optionsRect && e.clientX >= optionsRect.left && e.clientX <= optionsRect.right &&
+                 e.clientY >= optionsRect.top && e.clientY <= optionsRect.bottom) {
+        // Mover de vuelta a Optionen - centrar horizontalmente
+        const containerRect = optionsRect;
+        let y = e.clientY - containerRect.top - dragOffset.y;
+        
+        // Limitar verticalmente dentro del contenedor
+        y = Math.max(0, Math.min(containerRect.height - FOTOBOX_SIZE, y));
+        
+        // Centrar horizontalmente y posicionar verticalmente
+        fotoBoxHtml.style.position = 'relative';
+        fotoBoxHtml.style.left = 'auto';
+        fotoBoxHtml.style.marginLeft = 'auto';
+        fotoBoxHtml.style.marginRight = 'auto';
+        fotoBoxHtml.style.marginTop = '0';
+        fotoBoxHtml.style.top = 'auto';
+        fotoBoxHtml.style.display = 'flex';
+        // Guardar posición relativa al contenedor Optionen (y >= ROOM_HEIGHT indica que está en Optionen)
+        fotoBoxPosition = { x: 0, y: ROOM_HEIGHT + y }; // x: 0 indica que está centrado
+        // Ocultar SVG si existe
+        const fotoBoxSvg = document.getElementById('fotoBox') as SVGRectElement | null;
+        if (fotoBoxSvg) {
+          fotoBoxSvg.style.display = 'none';
+        }
+        StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
+      } else {
+        // Mover dentro de Optionen (si ya está ahí) - centrar horizontalmente
+        const optionsContainer = fotoBoxHtml.closest('.options-container-right') as HTMLElement;
+        if (optionsContainer) {
+          const containerRect = optionsContainer.getBoundingClientRect();
+          let y = e.clientY - containerRect.top - dragOffset.y;
+          
+          // Limitar verticalmente dentro del contenedor
+          y = Math.max(0, Math.min(containerRect.height - FOTOBOX_SIZE, y));
+          
+          // Centrar horizontalmente y posicionar verticalmente
+          fotoBoxHtml.style.position = 'relative';
+          fotoBoxHtml.style.left = 'auto';
+          fotoBoxHtml.style.marginLeft = 'auto';
+          fotoBoxHtml.style.marginRight = 'auto';
+          fotoBoxHtml.style.marginTop = '0';
+          fotoBoxHtml.style.top = 'auto';
+          // Guardar posición relativa al contenedor Optionen (y >= ROOM_HEIGHT indica que está en Optionen)
+          fotoBoxPosition = { x: 0, y: ROOM_HEIGHT + y }; // x: 0 indica que está centrado
+          // Ocultar SVG si existe
+          const fotoBoxSvg = document.getElementById('fotoBox') as SVGRectElement | null;
+          if (fotoBoxSvg) {
+            fotoBoxSvg.style.display = 'none';
+          }
+          StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
+        }
       }
     }
-    StorageService.saveDraggablePositions(djPosition, fotoBoxPosition, djRotation);
   } else if (draggedTable) {
-    isDragging = true;
+    // Detectar si hubo movimiento significativo (más de 5px)
+    if (mouseDownPosition) {
+      const rect = floorPlan.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const currentY = e.clientY - rect.top;
+      const distance = Math.sqrt(
+        Math.pow(currentX - mouseDownPosition.x, 2) + 
+        Math.pow(currentY - mouseDownPosition.y, 2)
+      );
+      if (distance > 5) {
+        tableWasDragged = true;
+      }
+    }
+    
+    const table = tableService.getTableById(draggedTable);
+    if (!table) return;
+    
+    // Si Geschenke está siendo arrastrado, verificar si va a Optionen o floorPlan
+    if (table.isGeschenke) {
+      const geschenkeContainer = document.getElementById('geschenkeContainer') as HTMLElement;
+      const existingInOptionen = geschenkeContainer?.querySelector(`[data-id="${draggedTable}"]`);
+      const floorPlanRect = floorPlan.getBoundingClientRect();
+      const optionsContainer = document.querySelector('.options-container-right') as HTMLElement;
+      const optionsRect = optionsContainer?.getBoundingClientRect();
+      
+      // Verificar si el mouse está sobre el floorPlan
+      if (e.clientX >= floorPlanRect.left && e.clientX <= floorPlanRect.right &&
+          e.clientY >= floorPlanRect.top && e.clientY <= floorPlanRect.bottom) {
+        // Mover al floorPlan
+        const x = e.clientX - floorPlanRect.left - dragOffset.x;
+        const y = e.clientY - floorPlanRect.top - dragOffset.y;
+        tableService.updateTablePosition(draggedTable, x, y);
+        return;
+      } else if (optionsRect && e.clientX >= optionsRect.left && e.clientX <= optionsRect.right &&
+                 e.clientY >= optionsRect.top && e.clientY <= optionsRect.bottom) {
+        // Mover a Optionen (posición especial fuera de la sala)
+        tableService.updateTablePosition(draggedTable, 0, ROOM_HEIGHT + 300);
+        return;
+      } else if (existingInOptionen) {
+        // Aún en Optionen, no hacer nada
+        return;
+      }
+    }
+    
     const rect = floorPlan.getBoundingClientRect();
     const x = e.clientX - rect.left - dragOffset.x;
     const y = e.clientY - rect.top - dragOffset.y;
+    
+    // Verificar si Geschenke o FotoBox se están moviendo de vuelta a Optionen
+    if (table.isGeschenke) {
+      const optionsContainer = document.querySelector('.options-container-right') as HTMLElement;
+      const optionsRect = optionsContainer?.getBoundingClientRect();
+      if (optionsRect && e.clientX >= optionsRect.left && e.clientX <= optionsRect.right &&
+          e.clientY >= optionsRect.top && e.clientY <= optionsRect.bottom) {
+        // Mover a Optionen
+        tableService.updateTablePosition(draggedTable, 0, ROOM_HEIGHT + 300);
+        return;
+      }
+    }
 
     // Si hay múltiples mesas seleccionadas, mover todas juntas
     if (selectedTables.length > 1 && selectedTables.includes(draggedTable)) {
@@ -1359,7 +2036,7 @@ function handleMouseMove(e: MouseEvent): void {
 }
 
 // Manejar fin de drag
-function handleMouseUp(e: MouseEvent): void {
+function handleMouseUp(_e: MouseEvent): void {
   // Finalizar selección múltiple
   if (isSelecting) {
     isSelecting = false;
@@ -1375,7 +2052,14 @@ function handleMouseUp(e: MouseEvent): void {
     return;
   }
   
+  // Si Geschenke fue arrastrado desde Optionen al floorPlan, actualizar renderizado
   if (draggedTable) {
+    const table = tableService.getTableById(draggedTable);
+    if (table && table.isGeschenke) {
+      // Forzar re-renderizado para mover Geschenke del contenedor de opciones al floorPlan o viceversa
+      renderTables();
+    }
+    
     // Remover clase dragging de todas las mesas
     if (selectedTables.length > 1 && selectedTables.includes(draggedTable)) {
       selectedTables.forEach(id => {
@@ -1392,16 +2076,37 @@ function handleMouseUp(e: MouseEvent): void {
     }
 
     draggedTable = null;
-    isDragging = false;
     initialTablePositions.clear();
     
-    // Mostrar controles si hay mesas seleccionadas
-    if (selectedTables.length > 0) {
+    // Mostrar controles solo si NO hubo drag (fue solo un click)
+    if (selectedTables.length > 0 && !tableWasDragged) {
       updateSelectionVisual();
+    } else if (selectedTables.length > 0 && tableWasDragged) {
+      // Si hubo drag, solo actualizar la visualización sin mostrar controles
+      const tables = tableService.getTables();
+      tables.forEach(table => {
+        const tableElement = floorPlan.querySelector(`[data-id="${table.id}"]`) as HTMLElement;
+        if (tableElement) {
+          if (selectedTables.includes(table.id)) {
+            tableElement.classList.add('selected');
+          } else {
+            tableElement.classList.remove('selected');
+          }
+        }
+      });
     }
+    
+    // Resetear flags
+    tableWasDragged = false;
+    mouseDownPosition = null;
   }
   if (draggedElement) {
+    // Si FotoBox fue arrastrado, actualizar renderizado
+    if (draggedElement === 'fotoBox') {
+      renderTables();
+    }
     draggedElement = null;
+    dragOffset = { x: 0, y: 0 };
   }
 }
 

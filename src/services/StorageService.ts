@@ -6,6 +6,7 @@ export class StorageService {
   private static DJ_POSITION_KEY = 'sala-dj-position';
   private static DJ_ROTATION_KEY = 'sala-dj-rotation';
   private static FOTOBOX_POSITION_KEY = 'sala-fotobox-position';
+  private static FLOOR_PLAN_ZOOM_KEY = 'sala-floor-plan-zoom';
 
   static saveTables(tables: Table[], nextId: number): void {
     try {
@@ -26,10 +27,13 @@ export class StorageService {
 
       if (savedTables) {
         tables = JSON.parse(savedTables);
-        // Asegurar que todas las mesas tengan el campo rotation
+        // Asegurar que todas las mesas tengan los campos rotation e isLocked
         tables.forEach(table => {
           if (table.rotation === undefined) {
             table.rotation = 0;
+          }
+          if (table.isLocked === undefined) {
+            table.isLocked = false;
           }
         });
       }
@@ -64,7 +68,7 @@ export class StorageService {
       const savedFotoBoxPos = localStorage.getItem(this.FOTOBOX_POSITION_KEY);
 
       let djPosition: Position = { x: 900, y: 400 }; // Posición inicial en el bottom del floor-plan
-      let djRotation: number = 0;
+      let djRotation: number = 180; // Rotación inicial de 180°
       let fotoBoxPosition: Position = { x: 400, y: 400 }; // Posición inicial en el bottom del floor-plan
 
       if (savedDjPos) {
@@ -73,6 +77,9 @@ export class StorageService {
 
       if (savedDjRotation) {
         djRotation = parseFloat(savedDjRotation);
+      } else {
+        // Si no hay rotación guardada, usar 180° como valor por defecto
+        djRotation = 180;
       }
 
       if (savedFotoBoxPos) {
@@ -85,8 +92,30 @@ export class StorageService {
       return {
         djPosition: { x: 900, y: 400 }, // Posición inicial en el bottom del floor-plan
         fotoBoxPosition: { x: 400, y: 400 }, // Posición inicial en el bottom del floor-plan
-        djRotation: 0
+        djRotation: 180 // Rotación inicial de 180°
       };
+    }
+  }
+
+  static saveFloorPlanZoom(zoom: number): void {
+    try {
+      localStorage.setItem(this.FLOOR_PLAN_ZOOM_KEY, zoom.toString());
+    } catch (e) {
+      console.warn('No se pudo guardar zoom en localStorage:', e);
+    }
+  }
+
+  static loadFloorPlanZoom(): number {
+    try {
+      const savedZoom = localStorage.getItem(this.FLOOR_PLAN_ZOOM_KEY);
+      if (savedZoom) {
+        const zoom = parseFloat(savedZoom);
+        return zoom === 1.5 ? 1.5 : 1.0; // Solo permitir 1.0 o 1.5
+      }
+      return 1.0; // Valor por defecto
+    } catch (e) {
+      console.warn('No se pudo cargar zoom de localStorage:', e);
+      return 1.0;
     }
   }
 }

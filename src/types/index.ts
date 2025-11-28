@@ -12,6 +12,7 @@ export interface Table {
   isGeschenke: boolean;
   tableNumber: number | string;
   rotation: number;
+  isLocked?: boolean; // Bloquear cambio automático de tipo y sillas
 }
 
 export interface DragOffset {
@@ -29,7 +30,7 @@ export interface TableDimensions {
 }
 
 export const ROOM_WIDTH = 1000; // cm
-export const ROOM_HEIGHT = 500; // cm
+export const ROOM_HEIGHT = 600; // cm (relación 100:60, 1000:600)
 export const ROOM_MARGIN = 20; // cm
 export const FOTOBOX_SIZE = 56; // px (30% más pequeño: 80 * 0.7)
 

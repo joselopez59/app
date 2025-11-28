@@ -57,7 +57,8 @@ export class TableService {
       isRoyal,
       isGeschenke: false,
       tableNumber: isRoyal ? 'R' : this.nextTableId, // Tisch Royal tiene etiqueta 'R'
-      rotation: isRoyal ? 90 : 0 // Tisch Royal rotada 90° para que el lado largo esté vertical
+      rotation: isRoyal ? 90 : 0, // Tisch Royal rotada 90° para que el lado largo esté vertical
+      isLocked: false // Por defecto, las mesas no están bloqueadas
     };
 
     this.tables.push(newTable);
@@ -193,19 +194,33 @@ export class TableService {
     this.onTablesChange();
   }
 
-  clearAllTables(): boolean {
+  clearAllTables(showConfirm: boolean = true): boolean {
     if (this.tables.length === 0) {
       return false;
     }
 
-    if (confirm('Sind Sie sicher, dass Sie alle Tische löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.')) {
-      this.tables = [];
-      this.nextTableId = 1;
-      this.saveTables();
-      this.onTablesChange();
-      return true;
+    if (showConfirm && !confirm('Sind Sie sicher, dass Sie alle Tische löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.')) {
+      return false;
     }
-    return false;
+
+    this.tables = [];
+    this.nextTableId = 1; // Resetear el contador de mesas
+    this.saveTables();
+    this.onTablesChange();
+    return true;
+  }
+
+  resetTableNumbers(): void {
+    // Resetear los números de las mesas después de limpiar
+    let tableCounter = 1;
+    this.tables.forEach(table => {
+      if (!table.isRoyal && !table.isGeschenke) {
+        table.tableNumber = tableCounter;
+        tableCounter++;
+      }
+    });
+    this.saveTables();
+    this.onTablesChange();
   }
 
   updateTablePosition(id: string, x: number, y: number): void {
@@ -240,13 +255,22 @@ export class TableService {
         table.x = ROOM_MARGIN;
       }
     } else {
+      // Para mesas normales, permitir posicionamiento en el floor-plan o en el sidebar
+      // El sidebar está en el rango y >= ROOM_HEIGHT && y < ROOM_HEIGHT + 200
       const minX = ROOM_MARGIN;
       const minY = ROOM_MARGIN;
       const maxX = ROOM_WIDTH - 85;
-      const maxY = ROOM_HEIGHT - 57;
 
-      table.x = Math.max(minX, Math.min(maxX, x));
-      table.y = Math.max(minY, Math.min(maxY, y));
+      // Si la mesa está en el rango del sidebar (y >= ROOM_HEIGHT), permitir posicionamiento libre
+      if (y >= ROOM_HEIGHT && y < ROOM_HEIGHT + 200) {
+        // Mesa en el sidebar: permitir cualquier x (será 0 normalmente) y y en el rango del sidebar
+        table.x = x;
+        table.y = Math.max(ROOM_HEIGHT, Math.min(ROOM_HEIGHT + 200, y));
+      } else {
+        // Mesa en el floor-plan: aplicar restricciones normales
+        table.x = Math.max(minX, Math.min(maxX, x));
+        table.y = Math.max(minY, Math.min(ROOM_HEIGHT - 57, y));
+      }
     }
 
     this.saveTables();
@@ -272,33 +296,68 @@ export class TableService {
 
   updateTableSeats(id: string, seats: number): void {
     const table = this.tables.find(t => t.id === id);
-    if (table && !table.isRoyal && !table.isGeschenke) {
-      // Solo permitir cambiar a 6 u 8 sillas para mesas normales
-      if (seats === 6 || seats === 8) {
+    if (table && !table.isRoyal && !table.isGeschenke && !table.isLocked) {
+      // Permitir cualquier número de sillas entre 1 y 8 (o más si es necesario)
+      // Solo si la mesa no está bloqueada
+      if (seats >= 1 && seats <= 8) {
         table.seats = seats;
         this.saveTables();
         this.onTablesChange();
       }
     }
   }
+  
+  // Añadir una silla a una mesa existente
+  addSeatToTable(id: string): boolean {
+    const table = this.tables.find(t => t.id === id);
+    // No modificar mesas bloqueadas
+    if (table && !table.isRoyal && !table.isGeschenke && !table.isLocked && table.seats < 8) {
+      table.seats = Math.min(8, table.seats + 1);
+      this.saveTables();
+      this.onTablesChange();
+      return true;
+    }
+    return false;
+  }
+  
+  // Remover una silla de una mesa existente
+  removeSeatFromTable(id: string): boolean {
+    const table = this.tables.find(t => t.id === id);
+    // No modificar mesas bloqueadas
+    if (table && !table.isRoyal && !table.isGeschenke && !table.isLocked && table.seats > 1) {
+      table.seats = Math.max(1, table.seats - 1);
+      this.saveTables();
+      this.onTablesChange();
+      return true;
+    }
+    return false;
+  }
 
   ensureGeschenkeTable(): void {
-    if (!this.tables.find(t => t.id === 'geschenke-table')) {
-      // La posición se calculará en repositionGeschenkeAndFotoBox
-      // Por ahora, usar una posición temporal
+    const existingGeschenke = this.tables.find(t => t.id === 'geschenke-table');
+    if (!existingGeschenke) {
+      // Crear Geschenke en Optionen (y >= ROOM_HEIGHT)
       const geschenkeTable: Table = {
         id: 'geschenke-table',
-        x: 50,
-        y: 600, // Posición temporal, se actualizará
+        x: 0,
+        y: 700, // Posición en Optionen (mayor que ROOM_HEIGHT = 600)
         seats: 8,
         isRoyal: false,
         isGeschenke: true,
         tableNumber: 'Geschenke',
-        rotation: 0 // Sin rotación inicial cuando está fuera
+        rotation: 0
       };
       this.tables.push(geschenkeTable);
       this.saveTables();
       this.onTablesChange();
+    } else {
+      // Asegurar que si el Geschenke existe pero está en el floorPlan, moverlo a Optionen
+      if (existingGeschenke.y < 600) { // ROOM_HEIGHT = 600
+        existingGeschenke.x = 0;
+        existingGeschenke.y = 700;
+        this.saveTables();
+        this.onTablesChange();
+      }
     }
   }
 
