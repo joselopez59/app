@@ -1,103 +1,128 @@
 <script lang="ts">
-    import { persons, autoConfigureTables, tables } from "../lib/stores";
+    import {
+        tables,
+        persons,
+        autoConfigureTables,
+        draggingItem,
+    } from "../lib/stores";
+    import Thumbwheel from "./Thumbwheel.svelte";
+    import TableComponent from "./Table.svelte";
 
-    let localPersons = $persons;
+    // Staging tables: not yet placed
+    $: stagingTables = $tables.filter((t) => !t.placed);
 
-    // React to changes in local input
-    function handleInput() {
-        persons.set(localPersons);
-        autoConfigureTables(localPersons);
+    function reset() {
+        autoConfigureTables($persons);
     }
 
-    function handleReset() {
-        localPersons = 0;
-        persons.set(0);
-        tables.set([]);
+    function handleStartDrag(e: MouseEvent, tableId: number) {
+        if (e.button !== 0) return;
+        // Start drag of a NEW instance from staging
+        // Actually, we are just dragging the existing unplaced table
+        draggingItem.set({ id: tableId });
     }
 </script>
 
-<div class="sidebar">
-    <h2>Settings</h2>
-
-    <div class="control-group">
-        <label for="persons-input">Number of Persons</label>
-        <input
-            id="persons-input"
-            type="number"
-            min="0"
-            bind:value={localPersons}
-            on:input={handleInput}
-            placeholder="e.g. 100"
-        />
+<div class="sidebar-container">
+    <!-- Left: Thumbwheel -->
+    <div class="thumbwheel-section">
+        <Thumbwheel bind:value={$persons} on:change={reset} />
     </div>
 
-    <div class="info">
-        <p>Tables: {$tables.length}</p>
+    <!-- Center: Info & Reset -->
+    <div class="info-section">
+        <div class="table-count">
+            {$tables.length} Tische
+        </div>
+        <button class="reset-btn" on:click={reset}>
+            RESET
+            <span class="subtext">Alle Löschen</span>
+        </button>
     </div>
 
-    <div class="actions">
-        <button class="danger" on:click={handleReset}>Clear All</button>
+    <!-- Right: Staging Area Slider -->
+    <div class="staging-area">
+        {#each stagingTables as table (table.id)}
+            <div
+                class="staged-item"
+                on:mousedown={(e) => handleStartDrag(e, table.id)}
+            >
+                <TableComponent {table} relative={true} />
+            </div>
+        {/each}
     </div>
 </div>
 
 <style>
-    .sidebar {
-        background: var(--bg-panel);
-        color: #fff;
-        padding: 1.5rem;
+    .sidebar-container {
+        width: 100%;
         height: 100%;
         display: flex;
-        flex-direction: column;
-        gap: 1.5rem;
-        border-right: 1px solid var(--border-color);
+        align-items: center;
+        background-color: #fafafa; /* Light background */
+        border-bottom: 1px solid #ddd;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        padding: 0 20px;
+        gap: 20px;
     }
 
-    h2 {
-        font-size: 1.5rem;
-        margin: 0;
-        color: var(--primary-color);
+    .thumbwheel-section {
+        flex-shrink: 0;
     }
 
-    .control-group {
+    .info-section {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        align-items: center;
+        gap: 5px;
+        min-width: 100px;
     }
 
-    label {
-        font-size: 0.9rem;
-        color: #aaa;
+    .table-count {
+        font-size: 1.2rem;
+        font-weight: bold;
+        color: #333;
     }
 
-    input {
-        padding: 0.8rem;
-        background: #121212;
-        border: 1px solid #444;
-        color: #fff;
-        border-radius: 6px;
-        font-size: 1rem;
+    .reset-btn {
+        background: #e53935;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        padding: 4px 12px;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        line-height: 1.1;
+    }
+    .reset-btn .subtext {
+        font-size: 0.7rem;
+        opacity: 0.8;
+    }
+    .reset-btn:hover {
+        background: #d32f2f;
     }
 
-    input:focus {
-        outline: none;
-        border-color: var(--primary-color);
+    .staging-area {
+        flex-grow: 1;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        overflow-x: auto;
+        gap: 15px;
+        padding: 10px;
+        background: #eee;
+        border-radius: 8px;
+        /* Inner shadow to indicate depth */
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
     }
 
-    .info {
-        font-size: 0.9rem;
-        color: #888;
-        padding: 1rem;
-        background: #1a1a1a; /* slightly darker */
-        border-radius: 6px;
+    .staged-item {
+        flex-shrink: 0;
+        transition: transform 0.2s;
     }
-
-    .actions {
-        margin-top: auto;
-    }
-
-    button.danger {
-        background-color: #cf6679;
-        width: 100%;
-        color: #000;
+    .staged-item:hover {
+        transform: translateY(-2px);
     }
 </style>

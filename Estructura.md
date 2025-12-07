@@ -4,49 +4,58 @@
 ```
 app/
 ├── src/
+│   ├── assets/             # Recursos estáticos (Logos, SalaBase)
 │   ├── components/         # Componentes UI reutilizables
-│   │   ├── FloorPlan.svelte    # Lienzo principal (mesas, DJ, etc.)
-│   │   ├── OptionsPanel.svelte # Panel derecho con items arrastrables
-│   │   ├── Sidebar.svelte      # Panel izquierdo (configuración)
+│   │   ├── FloorPlan.svelte    # Lienzo SVG (SalaBase vectorial)
+│   │   ├── OptionsPanel.svelte # Panel inferior (DJ, Fotobox)
+│   │   ├── Sidebar.svelte      # Barra superior (InputThumbwheel)
+│   │   ├── Thumbwheel.svelte   # Componente de entrada numérico estilo rueda
 │   │   └── Table.svelte        # Representación visual de una mesa
 │   ├── lib/
-│   │   ├── actions.ts          # Acciones Svelte (ej. followMouse)
-│   │   └── stores.ts           # Gestión de estado (Stores)
+│   │   ├── actions.ts          # Acciones Svelte (followMouse)
+│   │   └── stores.ts           # Gestión de estado (Stores: tables, persons, dragging)
 │   ├── types/
 │   │   └── index.ts            # Definiciones de tipos TypeScript
-│   ├── App.svelte          # Layout principal (3 columnas)
-│   ├── app.css             # Estilos globales (Dark Theme)
+│   ├── App.svelte          # Layout principal (3 Filas)
+│   ├── app.css             # Estilos globales (Dark Theme, Premium)
 │   ├── main.ts             # Punto de entrada
 │   └── vite-env.d.ts
 ├── public/
 ├── index.html
 ├── package.json
-├── tsconfig.json
 └── vite.config.ts
 ```
 
 ## Descripción de Componentes
 
 ### Core
-*   **App.svelte**: Orquestador principal. Maneja el layout de 3 columnas y los eventos globales de `window` para el Drag & Drop (movimiento de mesas y drop de nuevos items).
-*   **main.ts**: Monta la aplicación.
+*   **App.svelte**:
+    *   **Layout**: Contenedor centrado (`max-width: 1920px`).
+    *   **Estructura Vertical**:
+        1.  **Header**: 15% altura.
+        2.  **InputContainer**: Barra superior (`Sidebar.svelte`).
+        3.  **FloorPlan**: Área central (SVG Vectorial).
+        4.  **OptionsBar**: Barra inferior (`OptionsPanel.svelte`) con etiqueta "Optionen".
+    *   **Drag Logic**: Maneja eventos globales `window`.
 
 ### Components
 *   **Sidebar.svelte**:
-    *   Input para número de personas.
-    *   Llama a `autoConfigureTables` para regenerar el layout.
+    *   Barra horizontal superior.
+    *   Usa `Thumbwheel` para seleccionar el número de "Gäste" (Invitados).
+    *   Botón "Alles löschen" para reiniciar.
 *   **FloorPlan.svelte**:
-    *   Visualiza la lista de mesas (`$tables`).
-    *   Visualiza elementos extra (`$djPosition`, `$fotoBoxPosition`).
-*   **Table.svelte**:
-    *   Renderiza una mesa con sillas.
-    *   Maneja evento `mousedown` para iniciar arrastre.
+    *   SVG incrustado recreando el plano "SalaBase".
+    *   Muros, Barra, Pilar, Etiquetas y Flechas definidos vectorialmente.
+    *   Renderiza mesas sobre el SVG.
 *   **OptionsPanel.svelte**:
-    *   Muestra herramientas disponibles (DJ, FotoBox).
-    *   Inicia el arrastre de nuevos elementos (`draggingItem`).
+    *   Barra horizontal inferior.
+    *   Elementos arrastrables: DJ Pult, Fotobox.
+*   **Thumbwheel.svelte**:
+    *   Input personalizado.
+    *   Visualización de rueda con rayas y arrastre vertical.
 
 ### State Management (stores.ts)
-*   `tables`: Array de objetos mesa.
-*   `persons`: Número de comensales.
-*   `draggingItem`: Elemento siendo arrastrado actualmente (mesa o item nuevo).
-*   `djPosition` / `fotoBoxPosition`: Coordenadas de elementos únicos.
+*   `tables`: Array de mesas.
+*   `persons`: Número de invitados (Default 40).
+*   `draggingItem`: Elemento en arrastre.
+*   `djPosition` / `fotoBoxPosition`: Coordenadas de items extra.
