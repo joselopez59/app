@@ -1,35 +1,17 @@
-export interface Position {
-    x: number;
-    y: number;
-}
-
 export interface Table {
     id: string;
     x: number;
     y: number;
+    width: number;
+    height: number;
     seats: number;
-    isRoyal: boolean;
-    isGeschenke: boolean;
-    tableNumber: number | string;
     rotation: number;
+    type: 'rect' | 'round'; // For future flexibility
 }
 
-export interface DragOffset {
-    x: number;
-    y: number;
+export interface DragItem {
+    type: 'table' | 'dj' | 'fotobox';
+    id?: string; // If dragging an existing item
+    offsetX?: number;
+    offsetY?: number;
 }
-
-export type DraggedElement = 'dj' | 'fotoBox' | null;
-
-export interface TableDimensions {
-    tableWidth: number;
-    tableHeight: number;
-    containerWidth: number;
-    containerHeight: number;
-}
-
-// Constants
-export const ROOM_WIDTH = 1000;
-export const ROOM_HEIGHT = 500;
-export const ROOM_MARGIN = 20;
-export const FOTOBOX_SIZE = 56;

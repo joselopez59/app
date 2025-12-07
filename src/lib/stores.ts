@@ -1,49 +1,58 @@
-import { writable, type Writable } from 'svelte/store';
-import { Table, Position, DraggedElement, DragOffset, ROOM_HEIGHT, ROOM_MARGIN } from '../types/index';
-import { StorageService } from '../services/StorageService';
+import { writable } from 'svelte/store';
+import type { Table, DragItem } from '../types';
 
-// Initial state
-const savedPositions = StorageService.loadDraggablePositions();
-const savedTables = StorageService.loadTables();
+export const persons = writable<number>(0);
+export const tables = writable<Table[]>([]);
 
-// Stores
-export const tables: Writable<Table[]> = writable(savedTables);
-export const selectedTables: Writable<string[]> = writable([]);
+// Positions for extra items
+export const djPosition = writable<{ x: number, y: number } | null>(null);
+export const fotoBoxPosition = writable<{ x: number, y: number } | null>(null);
 
-export const personas: Writable<number> = writable(40); // Default 40
+// Dragging state
+export const draggingItem = writable<DragItem | null>(null);
 
-export const djPosition: Writable<Position> = writable(savedPositions.djPosition);
-export const djRotation: Writable<number> = writable(savedPositions.djRotation);
-export const fotoBoxPosition: Writable<Position> = writable(savedPositions.fotoBoxPosition);
+// Logic to auto-configure tables
+const TABLE_WIDTH = 180; // Example dimensions
+const TABLE_HEIGHT = 80;
+const SEATS_PER_TABLE = 8; // Example
 
-export const dragInfo: Writable<{
-    itemType: 'table' | 'dj' | 'fotoBox' | null;
-    itemId: string | null;
-    offset: DragOffset;
-    isDragging: boolean;
-}> = writable({
-    itemType: null,
-    itemId: null,
-    offset: { x: 0, y: 0 },
-    isDragging: false
-});
+export function autoConfigureTables(count: number) {
+    const numTables = Math.ceil(count / SEATS_PER_TABLE);
+    const newTables: Table[] = [];
 
-// Selection stores
-export const selectionRect: Writable<{
-    start: Position | null;
-    end: Position | null;
-    isSelecting: boolean;
-}> = writable({
-    start: null,
-    end: null,
-    isSelecting: false
-});
+    // Simple grid layout logic
+    const cols = 3;
+    const startX = 50;
+    const startY = 50;
+    const gapX = 200;
+    const gapY = 150;
 
-// Actions
-export const addTable = (seats: number = 8) => {
+    for (let i = 0; i < numTables; i++) {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+
+        newTables.push({
+            id: crypto.randomUUID(),
+            x: startX + col * gapX,
+            y: startY + row * gapY,
+            width: TABLE_WIDTH,
+            height: TABLE_HEIGHT,
+            seats: SEATS_PER_TABLE, // Simplified for now
+            rotation: 0,
+            type: 'rect'
+        });
+    }
+
+    tables.set(newTables);
+}
+
+export function moveTable(id: string, dx: number, dy: number) {
     tables.update(current => {
-        // Implementation of add table logic will be moved here or in a service
-        // For now, simpler store update
-        return current;
+        return current.map(t => {
+            if (t.id === id) {
+                return { ...t, x: t.x + dx, y: t.y + dy };
+            }
+            return t;
+        });
     });
-};
+}

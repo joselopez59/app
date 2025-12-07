@@ -1,84 +1,113 @@
 <script lang="ts">
-    import Sidebar from "./components/Sidebar.svelte";
-    import FloorPlan from "./components/FloorPlan.svelte";
-    import {
-        dragInfo,
-        tables,
-        djPosition,
-        fotoBoxPosition,
-    } from "./lib/stores";
-    import { TableService } from "./services/TableService"; // Need to update service or move utils
-    import { ROOM_WIDTH, ROOM_HEIGHT, ROOM_MARGIN } from "./types";
+  import Sidebar from "./components/Sidebar.svelte";
+  import FloorPlan from "./components/FloorPlan.svelte";
+  import OptionsPanel from "./components/OptionsPanel.svelte";
+  import {
+    draggingItem,
+    moveTable,
+    djPosition,
+    fotoBoxPosition,
+  } from "./lib/stores";
+  import { followMouse } from "./lib/actions";
 
-    function handleWindowMouseMove(e: MouseEvent) {
-        if (!$dragInfo.isDragging) return;
+  function handleMouseUp(e: MouseEvent) {
+    if (!$draggingItem) return;
 
-        const { itemType, itemId, offset } = $dragInfo;
-        // We need client rect of floor plan to calculate relative position
-        const floorPlanEl = document.getElementById("floorPlan");
-        if (!floorPlanEl) return;
-        const rect = floorPlanEl.getBoundingClientRect();
-
-        const x = e.clientX - rect.left - offset.x;
-        const y = e.clientY - rect.top - offset.y;
-
-        if (itemType === "table" && itemId) {
-            tables.update((current) => {
-                const t = current.find((t) => t.id === itemId);
-                if (t) {
-                    t.x = x;
-                    t.y = y;
-                }
-                return [...current]; // Trigger update
-            });
-        } else if (itemType === "dj") {
-            djPosition.set({ x, y });
-        } else if (itemType === "fotoBox") {
-            fotoBoxPosition.set({ x, y });
+    if ($draggingItem.type === "dj" || $draggingItem.type === "fotobox") {
+      const floorPlan = document.querySelector(".floor-plan");
+      if (floorPlan) {
+        const rect = floorPlan.getBoundingClientRect();
+        if (
+          e.clientX >= rect.left &&
+          e.clientX <= rect.right &&
+          e.clientY >= rect.top &&
+          e.clientY <= rect.bottom
+        ) {
+          const x = e.clientX - rect.left - 50;
+          const y = e.clientY - rect.top - 30;
+          if ($draggingItem.type === "dj") djPosition.set({ x, y });
+          if ($draggingItem.type === "fotobox") fotoBoxPosition.set({ x, y });
         }
+      }
     }
-
-    function handleWindowMouseUp() {
-        dragInfo.set({
-            isDragging: false,
-            itemType: null,
-            itemId: null,
-            offset: { x: 0, y: 0 },
-        });
-    }
+    draggingItem.set(null);
+  }
 </script>
 
 <svelte:window
-    on:mousemove={handleWindowMouseMove}
-    on:mouseup={handleWindowMouseUp}
+  on:mousemove={(e) => {
+    if ($draggingItem && $draggingItem.id) {
+      moveTable($draggingItem.id, e.movementX, e.movementY);
+    }
+  }}
+  on:mouseup={handleMouseUp}
 />
 
-<div class="app">
-    <header class="app-header">
-        <div class="header-content">
-            <div class="logo-container" id="logoContainer">
-                <svg
-                    width="40"
-                    height="40"
-                    viewBox="0 0 40 40"
-                    fill="none"
-                    xmlns="http://www.w3.org/2000/svg"
-                >
-                    <circle cx="20" cy="20" r="20" fill="#E60000" />
-                    <path d="M10 20H30" stroke="white" stroke-width="4" />
-                    <path d="M20 10V30" stroke="white" stroke-width="4" />
-                </svg>
-            </div>
-            <h1>Tischordnung Saal A</h1>
-        </div>
-    </header>
+{#if $draggingItem && !$draggingItem.id}
+  <div class="ghost-drag" use:followMouse>
+    {$draggingItem.type === "dj" ? "🎧" : "📸"}
+  </div>
+{/if}
 
-    <div class="app-content">
-        <Sidebar />
-        <FloorPlan />
-    </div>
-</div>
+<main class="app-layout">
+  <div class="sidebar-area">
+    <Sidebar />
+  </div>
+
+  <div class="canvas-area">
+    <FloorPlan />
+  </div>
+
+  <div class="options-area">
+    <OptionsPanel />
+  </div>
+</main>
 
 <style>
-    /* Global styles imported in app.css */
+  .app-layout {
+    display: flex;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .sidebar-area {
+    width: 320px;
+    flex-shrink: 0;
+    z-index: 10;
+    box-shadow: 2px 0 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .canvas-area {
+    flex-grow: 1;
+    position: relative;
+    background-color: #000;
+    overflow: hidden;
+  }
+
+  .options-area {
+    width: 280px;
+    flex-shrink: 0;
+    z-index: 10;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .ghost-drag {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px dashed #fff;
+    border-radius: 8px;
+    pointer-events: none;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    margin-left: -30px; /* Center on mouse */
+    margin-top: -30px;
+  }
 </style>

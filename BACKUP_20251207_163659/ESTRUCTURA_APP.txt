@@ -18,6 +18,9 @@ ESTRUCTURA DE CONTENEDORES Y OBJETOS DE LA APLICACIÓN TISCHORDNUNG (SVELTE)
         - Renderizado SVG de la sala
         - Renderizado de mesas en el plano (Table.svelte)
         - Elementos DJ / FotoBox (SVG directos o componentes)
+    - OptionsPanel.svelte:
+        - Panel derecho para "Optionen"
+        - Fuente de items arrastrables (DJ, FotoBox)
     - Table.svelte:
         - Visualización de mesa + sillas
         - Lógica de posicionamiento de sillas
@@ -68,5 +71,5 @@ app/
 
 ================================================================================
 FIN DEL DOCUMENTO
-Última actualización: Refactorización completa a Svelte (Svelte 4 + Vite).
+Última actualización: Bar movido a Top-Left; Creado Options Panel para extra items.
 ================================================================================

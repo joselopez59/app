@@ -1,133 +1,103 @@
 <script lang="ts">
-    import { personas, tables } from "../lib/stores";
-    import TableComponent from "./Table.svelte";
-    import { Table, ROOM_HEIGHT } from "../types";
+    import { persons, autoConfigureTables, tables } from "../lib/stores";
 
-    // Simple ID generator if uuid not available
-    const generateId = () => "table-" + Math.random().toString(36).substr(2, 9);
+    let localPersons = $persons;
 
-    function autoConfigureTables(totalPersonas: number) {
-        if (isNaN(totalPersonas) || totalPersonas < 10) return;
-
-        const validPersonas = Math.min(100, Math.max(10, totalPersonas));
-
-        // Logic from app.ts
-        let remainingPersonas = validPersonas;
-        const tablesToCreate: number[] = [];
-
-        const tables8 = Math.floor(remainingPersonas / 8);
-        remainingPersonas = remainingPersonas % 8;
-        for (let i = 0; i < tables8; i++) tablesToCreate.push(8);
-
-        if (remainingPersonas > 0) {
-            if (remainingPersonas === 7) tablesToCreate.push(7);
-            else tablesToCreate.push(remainingPersonas);
-        }
-
-        // Limit to 13
-        if (tablesToCreate.length > 13) {
-            const excess = tablesToCreate.length - 13;
-            for (let i = 0; i < excess; i++) tablesToCreate.pop();
-            // Recalculate remaining
-            const currentTotal = tablesToCreate.reduce((a, b) => a + b, 0);
-            const diff = validPersonas - currentTotal;
-            if (diff > 0 && tablesToCreate.length < 13)
-                tablesToCreate.push(diff);
-        }
-
-        // Update Store
-        tables.update((current) => {
-            // Keep Geschenke
-            const geschenke = current.find((t) => t.isGeschenke);
-            const others = current.filter((t) => t.y < 500); // Keep tables already on floor?
-            // Re-reading logic: logic replaces ALL tables except Geschenke.
-            // AND it places them in the sidebar (y > ROOM_HEIGHT).
-
-            const newTables: Table[] = [];
-            if (geschenke) newTables.push(geschenke);
-
-            let tableCount = 1;
-            tablesToCreate.forEach((seats, index) => {
-                // Check if we can reuse an existing table from the floor?
-                // Orginal logic seemed to create new ones or reset.
-                // We will create new ones for sidebar.
-                newTables.push({
-                    id: generateId(),
-                    x: 0,
-                    y: ROOM_HEIGHT + 50, // Sidebar area
-                    seats: seats,
-                    isRoyal: false,
-                    isGeschenke: false,
-                    tableNumber: tableCount++,
-                    rotation: 0,
-                });
-            });
-
-            return newTables;
-        });
+    // React to changes in local input
+    function handleInput() {
+        persons.set(localPersons);
+        autoConfigureTables(localPersons);
     }
 
-    // React to personas change
-    $: autoConfigureTables($personas);
-
-    function handlePersonasChange(e: Event) {
-        const val = parseInt((e.target as HTMLInputElement).value);
-        personas.set(val);
+    function handleReset() {
+        localPersons = 0;
+        persons.set(0);
+        tables.set([]);
     }
-
-    function handleSidebarDragStart(event: CustomEvent) {
-        // Logic to be handled up chain or via store
-        // But typically we want to start drag immediately.
-        // dispatch('sidebarDrag', event.detail);
-    }
-
-    // Filter for display
-    $: sidebarTables = $tables.filter((t) => !t.isGeschenke && t.y >= 500);
 </script>
 
-<div class="table-list">
-    <div class="personas-input-row">
-        <div class="number-input-wrapper">
-            <button
-                class="number-input-btn"
-                on:click={() => personas.update((n) => Math.max(10, n - 1))}
-                >−</button
-            >
-            <input
-                type="number"
-                class="number-input"
-                value={$personas}
-                on:input={handlePersonasChange}
-            />
-            <button
-                class="number-input-btn"
-                on:click={() => personas.update((n) => Math.min(100, n + 1))}
-                >+</button
-            >
-        </div>
+<div class="sidebar">
+    <h2>Settings</h2>
+
+    <div class="control-group">
+        <label for="persons-input">Number of Persons</label>
+        <input
+            id="persons-input"
+            type="number"
+            min="0"
+            bind:value={localPersons}
+            on:input={handleInput}
+            placeholder="e.g. 100"
+        />
     </div>
 
-    <div class="calculated-tables-container">
-        <!-- Render grid logic via CSS (flex wrap) -->
-        <div
-            style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;"
-        >
-            {#each sidebarTables as table (table.id)}
-                <div style="margin: 5px;">
-                    <TableComponent {table} isSidebar={true} on:sidebarDrag />
-                </div>
-            {/each}
-        </div>
+    <div class="info">
+        <p>Tables: {$tables.length}</p>
     </div>
 
-    <button
-        class="btn-clear-all"
-        on:click={() => {
-            /* Clear logic */
-        }}>Alle Tische löschen</button
-    >
+    <div class="actions">
+        <button class="danger" on:click={handleReset}>Clear All</button>
+    </div>
 </div>
 
 <style>
-    /* Reuse styles from global css */
+    .sidebar {
+        background: var(--bg-panel);
+        color: #fff;
+        padding: 1.5rem;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        border-right: 1px solid var(--border-color);
+    }
+
+    h2 {
+        font-size: 1.5rem;
+        margin: 0;
+        color: var(--primary-color);
+    }
+
+    .control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    label {
+        font-size: 0.9rem;
+        color: #aaa;
+    }
+
+    input {
+        padding: 0.8rem;
+        background: #121212;
+        border: 1px solid #444;
+        color: #fff;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+
+    input:focus {
+        outline: none;
+        border-color: var(--primary-color);
+    }
+
+    .info {
+        font-size: 0.9rem;
+        color: #888;
+        padding: 1rem;
+        background: #1a1a1a; /* slightly darker */
+        border-radius: 6px;
+    }
+
+    .actions {
+        margin-top: auto;
+    }
+
+    button.danger {
+        background-color: #cf6679;
+        width: 100%;
+        color: #000;
+    }
 </style>
