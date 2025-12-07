@@ -385,6 +385,6 @@ ESTRUCTURA DE CONTENEDORES Y OBJETOS DE LA APLICACIÓN TISCHORDNUNG
 
 ================================================================================
 FIN DEL DOCUMENTO
-Última actualización: Después de implementar cálculo automático al cambiar personas y filas de 4
+Última actualización: Restauración de index.html y src/types/index.ts; Verificación de estructura completa.
 ================================================================================
 
