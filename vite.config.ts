@@ -1,22 +1,6 @@
 import { defineConfig } from 'vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
-  build: {
-    outDir: 'dist',
-    rollupOptions: {
-      input: {
-        main: './index.html'
-      }
-    }
-  },
-  server: {
-    port: 3000,
-    host: true, // Permite acceso desde la red local (LAN)
-    open: true
-  }
+  plugins: [svelte()],
 });
-
-
-
-
-

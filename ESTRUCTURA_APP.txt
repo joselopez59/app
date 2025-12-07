@@ -1,390 +1,72 @@
 ================================================================================
-ESTRUCTURA DE CONTENEDORES Y OBJETOS DE LA APLICACIÓN TISCHORDNUNG
+ESTRUCTURA DE CONTENEDORES Y OBJETOS DE LA APLICACIÓN TISCHORDNUNG (SVELTE)
 ================================================================================
 
-1. CONTENEDORES PRINCIPALES (HTML)
+1. ARQUITECTURA DE COMPONENTES (SVELTE)
 ================================================================================
 
-1.1. Contenedor Raíz
-    - <div class="app">
-        Contenedor principal de toda la aplicación
+1.1. Root
+    - App.svelte (Layout pincipal: Header + Content)
+        - main.ts (Punto de entrada)
 
-1.2. Header (Cabecera)
-    - <header class="app-header">
-        - <div class="header-content">
-            - <div class="logo-container" id="logoContainer">
-                Contiene el logo SVG de Monberg
-            - <h1>Tischordnung Saal A</h1>
-                Título principal con gradiente animado
+1.2. Componentes UI (src/components/)
+    - Sidebar.svelte:
+        - Input de personas
+        - Lista de mesas calculadas (sidebarTables)
+        - Botón "Alle Tische löschen"
+    - FloorPlan.svelte:
+        - Renderizado SVG de la sala
+        - Renderizado de mesas en el plano (Table.svelte)
+        - Elementos DJ / FotoBox (SVG directos o componentes)
+    - Table.svelte:
+        - Visualización de mesa + sillas
+        - Lógica de posicionamiento de sillas
+        - Controles de rotación (si está seleccionada)
+    - DraggableItem.svelte:
+        - Componente genérico para DJ/FotoBox (opcional)
 
-1.3. Contenido Principal
-    - <div class="app-content">
-        Contenedor flex que organiza el sidebar y el floor-plan
-
-        1.3.1. Sidebar Izquierdo (Kart 'Tische')
-        - <div class="table-list">
-            - <div class="personas-input-row">
-                Contenedor del input de número de personas
-                - <div class="number-input-wrapper">
-                    - <button id="decreasePersonasBtn" class="number-input-btn number-input-decrease">−</button>
-                    - <input type="number" id="personasInput" min="10" max="100" value="40" class="number-input">
-                        Valor por defecto: 40 personas
-                    - <button id="increasePersonasBtn" class="number-input-btn number-input-increase">+</button>
-            
-            - <div id="calculatedTablesContainer" class="calculated-tables-container">
-                Contenedor donde se renderizan las mesas calculadas en filas de 4
-                (Se crea dinámicamente con filas y mesas)
-                NOTA: Se calcula automáticamente al inicializar la app con 40 personas por defecto
-                NOTA: Se recalcula automáticamente al cambiar el número de personas (input, botones +/-)
-            
-            - <button id="clearAllBtn" class="btn-clear-all">
-                Botón "Alle Tische löschen"
-
-        1.3.2. Contenedor del Floor Plan (Lado Derecho)
-        - <div class="floor-plan-container">
-            - <div class="floor-plan" id="floorPlan">
-                Contenedor principal donde se renderizan las mesas y elementos de la sala
-                
-                1.3.2.1. SVG del Plano de la Sala
-                - <svg class="floor-plan-svg" viewBox="0 0 1000 500">
-                    
-                    Elementos SVG estáticos:
-                    - <defs>
-                        - <pattern id="tilePattern">
-                            Patrón de baldosines para el suelo
-                    
-                    - <rect> (Suelo con patrón de baldosines)
-                    - <rect> (Pared superior - 1000x20)
-                    - <rect> (Pared izquierda - 20x500)
-                    - <rect> (Pared derecha - 20x500)
-                    - <rect> (Pared inferior - 1000x20)
-                    - <rect> (Puerta superior - 180x22)
-                    - <rect> (Puerta izquierda - 22x150)
-                    - <rect> (Abertura inferior - 100x22)
-                    - <rect> (Bar - 415x100, fondo gris)
-                    - <text> (Etiqueta "Bar")
-                    - <circle> (Columna central - r=20)
-                    
-                    Elementos SVG arrastrables:
-                    - <g id="djMixer">
-                        Mesa DJ con rectángulo, líneas diagonales y círculos
-                        - <rect> (Rectángulo principal 140x60)
-                        - <line> (Líneas diagonales)
-                        - <circle> (Círculos blancos - 2 unidades)
-                    
-                    - <rect id="fotoBox">
-                        FotoBox cuadrado 56x56
-                    - <text id="fotoBoxText"> ("Foto")
-                    - <text id="fotoBoxText2"> ("Box")
-                
-                NOTA: Las mesas y controles se añaden dinámicamente al floorPlan mediante JavaScript
+1.3. Estado Global (src/lib/stores.ts)
+    - tables: Writable<Table[]>
+    - personas: Writable<number>
+    - djPosition, fotoBoxPosition
+    - dragInfo: Estado del arrastre actual
+    - selectionRect: Estado de selección múltiple
 
 
-2. OBJETOS Y ELEMENTOS DINÁMICOS (JavaScript/TypeScript)
+2. FLUJO DE DATOS
 ================================================================================
 
-2.1. Elementos del DOM Referenciados
-    - floorPlan (HTMLElement): Contenedor principal del plano
-    - clearAllBtn (HTMLElement): Botón para borrar todas las mesas
-    - calculatedTablesContainer (HTMLElement): Contenedor de mesas calculadas
-    - personasInput (HTMLInputElement): Input de número de personas
-    - increasePersonasBtn (HTMLElement): Botón incrementar personas
-    - decreasePersonasBtn (HTMLElement): Botón decrementar personas
-    - djMixer (SVGGElement): Grupo SVG del DJ
-    - fotoBox (SVGRectElement): Rectángulo SVG del FotoBox
-    - fotoBoxText (SVGTextElement): Texto "Foto"
-    - fotoBoxText2 (SVGTextElement): Texto "Box"
+2.1. Reactividad
+    - El número de personas actualiza el store `personas`.
+    - `Sidebar.svelte` reacciona a cambios en `personas` y recalcula `tables` (lógica autoConfigure).
+    - `FloorPlan.svelte` y `Sidebar` se suscriben a `$tables` para renderizar.
 
-2.2. Elementos Creados Dinámicamente
+2.2. Drag & Drop
+    - Inicio: `Table.svelte` emite evento o actualiza `dragInfo` store.
+    - Movimiento: `App.svelte` (o `window`) escucha `mousemove` y actualiza la posición en el store si `isDragging`.
+    - Fin: `mouseup` resetea `dragInfo`.
 
-    2.2.1. Mesas (Tables)
-    - <div class="table" data-id="[id]">
-        - <div class="table-container">
-            - <div class="chairs-container">
-                - <div class="chair"> (múltiples sillas según número de plazas)
-            - <div class="table-circle">
-                - <div class="table-seats"> (número o texto de la mesa)
-    
-    Tipos de mesas:
-    - Mesa normal (6 u 8 personas, o número personalizado)
-    - Tisch Royal (mesa especial con sillas en un lado)
-    - Mesa Geschenke (mesa especial sin sillas)
-    
-    Mesas del sidebar:
-    - <div class="table table-sidebar" data-id="[id]">
-        Versión escalada (0.6) para mostrar en el sidebar
-
-    2.2.2. Controles de Rotación/Acción
-    - <div class="rotation-controls" data-table-id="[id]">
-        - <button class="table-control-btn rotate-btn">↻</button>
-        - <button class="table-control-btn change-seats-btn">[6|8]</button>
-        - <button class="table-control-btn duplicate-btn">⧉</button>
-        - <button class="table-control-btn delete-btn">×</button>
-    
-    Controles para selección múltiple:
-    - <div class="rotation-controls multi-selection-controls">
-        - <button class="table-control-btn duplicate-btn">⧉</button>
-        - <button class="table-control-btn delete-btn">×</button>
-    
-    Controles para DJ:
-    - <div class="rotation-controls dj-rotation-controls">
-        - <button class="table-control-btn rotate-btn">↻</button>
-
-    2.2.3. Rectángulo de Selección
-    - <div class="selection-box">
-        Rectángulo que aparece al hacer selección múltiple
-
-    2.2.4. Contenedor de Mesas Calculadas (Sidebar)
-    - <div> (rowsContainer)
-        - <div> (row) - Para cada fila de 4 mesas
-            - <div class="table table-sidebar"> (múltiples mesas)
-
-
-3. INTERFACES Y TIPOS (TypeScript)
+3. ESTRUCTURA DE ARCHIVOS
 ================================================================================
-
-3.1. Position
-    - x: number
-    - y: number
-
-3.2. Table
-    - id: string
-    - x: number
-    - y: number
-    - seats: number
-    - isRoyal: boolean
-    - isGeschenke: boolean
-    - tableNumber: number | string
-    - rotation: number
-
-3.3. DragOffset
-    - x: number
-    - y: number
-
-3.4. DraggedElement
-    Tipo: 'dj' | 'fotoBox' | null
-
-3.5. TableDimensions
-    - tableWidth: number
-    - tableHeight: number
-    - containerWidth: number
-    - containerHeight: number
-
-
-4. CONSTANTES
-================================================================================
-
-- ROOM_WIDTH: 1000 (cm)
-- ROOM_HEIGHT: 500 (cm)
-- ROOM_MARGIN: 20 (cm)
-- FOTOBOX_SIZE: 56 (px)
-
-
-5. SERVICIOS
-================================================================================
-
-5.1. TableService
-    Gestiona las mesas: crear, eliminar, duplicar, rotar, actualizar posiciones
-
-5.2. StorageService
-    Gestiona el almacenamiento local: guardar/cargar posiciones y estado
-
-
-6. ESTADOS DE LA APLICACIÓN
-================================================================================
-
-- draggedTable: string | null
-- draggedElement: DraggedElement
-- dragOffset: DragOffset
-- selectedTable: string | null
-- isDragging: boolean
-- djPosition: Position
-- djRotation: number
-- djWasDragged: boolean
-- fotoBoxPosition: Position
-- isSelecting: boolean
-- selectionStart: Position | null
-- selectionEnd: Position | null
-- selectedTables: string[]
-- selectionBox: HTMLElement | null
-- initialTablePositions: Map<string, Position>
-
-
-7. CLASES CSS PRINCIPALES
-================================================================================
-
-7.1. Layout
-    - .app
-    - .app-header
-    - .header-content
-    - .app-content
-    - .table-list
-    - .floor-plan-container
-    - .floor-plan
-
-7.2. Input de Personas
-    - .personas-input-row
-    - .number-input-wrapper
-    - .number-input-btn
-    - .number-input
-    - .personas-display
-    - .set-button
-
-7.3. Mesas
-    - .table
-    - .table-sidebar
-    - .table-container
-    - .table-circle
-    - .table-seats
-    - .chairs-container
-    - .chair
-
-7.4. Controles
-    - .rotation-controls
-    - .table-control-btn
-    - .rotate-btn
-    - .change-seats-btn
-    - .duplicate-btn
-    - .delete-btn
-    - .btn-clear-all
-    - .selection-box
-
-7.5. Mesas Calculadas
-    - .calculated-tables-container
-
-
-8. ELEMENTOS SVG ESPECÍFICOS
-================================================================================
-
-8.1. Patrones y Defs
-    - #tilePattern: Patrón de baldosines
-
-8.2. Elementos Estáticos
-    - Suelo: rect con fill="url(#tilePattern)"
-    - Paredes: 4 rectángulos grises (#999999)
-    - Puertas: 3 rectángulos con patrón de baldosines
-    - Bar: rectángulo gris (#808080) con texto "Bar"
-    - Columna: círculo gris en el centro
-
-8.3. Elementos Arrastrables
-    - #djMixer: Grupo SVG con rectángulo, líneas y círculos
-    - #fotoBox: Rectángulo SVG
-    - #fotoBoxText: Texto SVG "Foto"
-    - #fotoBoxText2: Texto SVG "Box"
-
-
-9. FUNCIONES PRINCIPALES
-================================================================================
-
-9.1. Inicialización
-    - init(): Inicializa la aplicación
-        - Carga posiciones guardadas
-        - Inicializa TableService
-        - Configura event listeners
-        - Inicializa drag & drop para DJ y FotoBox
-        - Asegura que exista mesa Geschenke
-        - Reposiciona Geschenke y FotoBox
-        - Renderiza mesas iniciales
-        - Llama automáticamente a autoConfigureTables() con valor por defecto (40 personas)
-
-9.2. Gestión de Mesas
-    - autoConfigureTables(): Crea mesas automáticamente según número de personas
-    - renderTables(): Renderiza todas las mesas en el floorPlan
-    - createTableElement(): Crea elemento DOM para una mesa
-    - createTableElementForSidebar(): Crea elemento DOM para mesa en sidebar
-    - renderCalculatedTables(): Renderiza mesas calculadas en el sidebar
-
-9.3. Drag & Drop
-    - handleMouseDown(): Maneja inicio de drag
-    - handleMouseMove(): Maneja movimiento durante drag
-    - handleMouseUp(): Maneja fin de drag
-    - handleSidebarTableMouseDown(): Maneja drag desde sidebar
-    - initDraggableElements(): Inicializa DJ y FotoBox
-
-9.4. Selección
-    - handleFloorPlanMouseDown(): Inicia selección múltiple
-    - updateSelectionBox(): Actualiza rectángulo de selección
-    - detectTablesInSelection(): Detecta mesas en selección
-    - updateSelectionVisual(): Actualiza visualización de selección
-    - clearSelection(): Limpia selección
-
-9.5. Controles
-    - showRotationControls(): Muestra controles de una mesa
-    - showMultiSelectionControls(): Muestra controles de selección múltiple
-    - showDjRotationControls(): Muestra controles del DJ
-    - hideRotationControls(): Oculta todos los controles
-    - rotateTable(): Rota una mesa 45°
-    - rotateDj(): Rota el DJ 45°
-
-9.6. Utilidades
-    - repositionGeschenkeAndFotoBox(): Reposiciona Geschenke y FotoBox
-
-
-10. FLUJO DE DATOS
-================================================================================
-
-10.1. Al inicializar la aplicación
-    1. Se carga el estado guardado (posiciones de DJ, FotoBox, mesas)
-    2. Se inicializa TableService
-    3. Se configuran todos los event listeners
-    4. Se inicializa drag & drop para DJ y FotoBox
-    5. Se asegura que exista mesa Geschenke
-    6. Se reposicionan Geschenke y FotoBox fuera de la sala
-    7. Se renderizan mesas existentes
-    8. Se llama automáticamente a autoConfigureTables() con valor por defecto (40 personas)
-    9. Se calculan y muestran mesas en calculatedTablesContainer
-
-10.2. Al cambiar el número de personas (input, botones +/-, o escribir)
-    1. Se valida el valor (10-100)
-    2. Se lee el número de personas del input
-    3. Se calcula distribución de mesas (8, 6, o número personalizado)
-    4. Se eliminan mesas existentes (excepto Geschenke)
-    5. Se crean nuevas mesas con posiciones especiales (y = ROOM_HEIGHT + 50)
-    6. Se renderizan en el sidebar en filas de 4
-    7. Se reposicionan Geschenke y FotoBox
-    NOTA: El cálculo es automático, no requiere presionar ningún botón
-
-10.3. Al arrastrar mesa desde sidebar
-    1. Se detecta mousedown en mesa del sidebar
-    2. Se calcula posición en el floorPlan
-    3. Se actualiza posición de la mesa
-    4. Se inicia drag normal
-    5. Al soltar, la mesa queda en el floorPlan
-
-10.4. Al seleccionar mesa(s)
-    1. Se detecta click o selección múltiple
-    2. Se actualiza selectedTables
-    3. Se muestran controles de acción
-    4. Los controles permanecen visibles hasta deselección
-
-
-11. VALORES POR DEFECTO
-================================================================================
-
-- Número de personas: 40 (cambió de 80 a 40)
-- Auto-configuración: Se ejecuta automáticamente al inicializar la app
-- Mesas calculadas: Se muestran automáticamente en calculatedTablesContainer al iniciar
-
-
-12. CAMBIOS RECIENTES
-================================================================================
-
-- Eliminados botones de añadir mesas manualmente
-- Eliminado carrusel de mesas
-- Eliminado personasDisplay (ya no es necesario)
-- Eliminado botón "Set" (el cálculo es automático)
-- Mesas calculadas se muestran en calculatedTablesContainer dentro de table-list
-- Mesas se organizan en filas de 4 en el sidebar (cambiado de 3 a 4)
-- Valor por defecto de personas cambiado de 80 a 40
-- Auto-configuración se ejecuta automáticamente al inicializar la app
-- Cálculo de mesas se ejecuta automáticamente al cambiar el número de personas
-- Mesas del sidebar pueden arrastrarse al floorPlan
-- Rotación de mesas solo disponible cuando están dentro de la sala (y < ROOM_HEIGHT)
-- Botón para cambiar entre 6 y 8 plazas añadido a los controles de mesa
-
+app/
+├── src/
+│   ├── components/
+│   │   ├── Table.svelte
+│   │   ├── FloorPlan.svelte
+│   │   ├── Sidebar.svelte
+│   │   └── ...
+│   ├── lib/
+│   │   └── stores.ts         # Estado Svelte
+│   ├── types/
+│   │   └── index.ts
+│   ├── main.ts               # Entry point
+│   ├── App.svelte            # Root
+│   └── app.css               # Estilos globales
+├── index.html
+├── vite.config.ts
+└── package.json
 
 ================================================================================
 FIN DEL DOCUMENTO
-Última actualización: Restauración de index.html y src/types/index.ts; Verificación de estructura completa.
+Última actualización: Refactorización completa a Svelte (Svelte 4 + Vite).
 ================================================================================
-
