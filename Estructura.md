@@ -30,7 +30,7 @@ app/
 
 ### Core
 *   **App.svelte**:
-    *   **Layout**: Contenedor centrado (`max-width: 1920px`).
+    *   **Layout**: Contenedor centrado (`max-width: 1280px`).
     *   **Estructura Vertical**:
         1.  **Header**: 15% altura.
         2.  **InputContainer**: Barra superior (`Sidebar.svelte`).
@@ -40,13 +40,16 @@ app/
 
 ### Components
 *   **Sidebar.svelte**:
-    *   Barra horizontal superior.
-    *   Usa `Thumbwheel` para seleccionar el número de "Gäste" (Invitados).
-    *   Botón "Alles löschen" para reiniciar.
+    *   **Thumbwheel (Izq)**: Selección de invitados.
+    *   **Info (Centro)**: Contador de mesas y botón RESET.
+    *   **Staging Area (Der)**: Slider horizontal con las mesas generadas (aún no colocadas).
 *   **FloorPlan.svelte**:
     *   SVG incrustado recreando el plano "SalaBase".
+    *   Solo renderiza mesas con `placed: true`.
     *   Muros, Barra, Pilar, Etiquetas y Flechas definidos vectorialmente.
-    *   Renderiza mesas sobre el SVG.
+*   **Table.svelte**:
+    *   Soporta modo `relative` (para Staging) y absoluto (para FloorPlan).
+    *   Context Menu: Click derecho para Rotar, Bloquear Tipo, Renombrar.
 *   **OptionsPanel.svelte**:
     *   Barra horizontal inferior.
     *   Elementos arrastrables: DJ Pult, Fotobox.
@@ -55,7 +58,7 @@ app/
     *   Visualización de rueda con rayas y arrastre vertical.
 
 ### State Management (stores.ts)
-*   `tables`: Array de mesas.
+*   `tables`: Array de objetos `Table` (`id`, `x`, `y`, `type`, `rotation`, `label`, `placed`).
 *   `persons`: Número de invitados (Default 40).
 *   `draggingItem`: Elemento en arrastre.
 *   `djPosition` / `fotoBoxPosition`: Coordenadas de items extra.

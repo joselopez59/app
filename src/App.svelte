@@ -12,6 +12,57 @@
   import { followMouse } from "./lib/actions";
   import MonbergLogo from "./assets/Monberg-Logo-weiss.svg";
 
+  let scale = 1;
+  let showConfigPopup = false;
+  let configTableId: number | null = null;
+  let tempLabel = "";
+  let isDragging = false;
+  let dragStartTime = 0;
+
+  function openConfigPopup(tableId: number) {
+    configTableId = tableId;
+    const table = $tables.find((t) => t.id === tableId);
+    tempLabel = table?.label || "";
+    showConfigPopup = true;
+  }
+
+  function closeConfigPopup() {
+    showConfigPopup = false;
+    configTableId = null;
+    tempLabel = "";
+  }
+
+  function saveTableConfig() {
+    if (configTableId !== null) {
+      tables.update((curr) =>
+        curr.map((t) =>
+          t.id === configTableId ? { ...t, label: tempLabel } : t,
+        ),
+      );
+    }
+    closeConfigPopup();
+  }
+
+  function rotateConfigTable() {
+    if (configTableId !== null) {
+      tables.update((curr) =>
+        curr.map((t) =>
+          t.id === configTableId
+            ? { ...t, rotation: (t.rotation + 45) % 360 }
+            : t,
+        ),
+      );
+    }
+  }
+
+  function setConfigTableType(type: "6" | "8") {
+    if (configTableId !== null) {
+      tables.update((curr) =>
+        curr.map((t) => (t.id === configTableId ? { ...t, type } : t)),
+      );
+    }
+  }
+
   function handleMouseUp(e: MouseEvent) {
     if (!$draggingItem) return;
 
@@ -19,66 +70,59 @@
       const floorPlan = document.querySelector(".floor-plan");
       if (floorPlan) {
         const rect = floorPlan.getBoundingClientRect();
+        // Check if cursor is within the projected floor plan rect
         if (
           e.clientX >= rect.left &&
           e.clientX <= rect.right &&
           e.clientY >= rect.top &&
           e.clientY <= rect.bottom
         ) {
+          // Logic for dropping extra items if verification needed
         }
       }
-      if ($draggingItem.id) {
-        // It's a table based drag
-        const tableId = $draggingItem.id;
-        // Check if dropped within floor plan?
-        // We can just assume global drop updates position
-        // We need to know if we are over the floor plan?
-        // Or we just update position and set placed = true?
 
-        // Get floor plan bounds (simplified)
-        const floorPlanEl = document.querySelector(".floor-plan-container");
-        if (floorPlanEl) {
-          const rect = floorPlanEl.getBoundingClientRect();
-          const x = e.clientX - rect.left; // Adjust these scaling factors as needed
-          const y = e.clientY - rect.top;
+      // We rely on the ghost drag termination or future logic for these items
+    }
 
-          // If inside floor plan
-          if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
-            // Update table position relative to floor plan internal coordinates
-            // Our floor plan svg is 1000x600, centered in container?
-            // This coordinate math is tricky without exact ref.
-            // For now, let's map screen drop to a "placed" state at mouse.
-            // Ideally, we'd use the drop event on the floor plan itself, but global handler is easier for cross-component drag.
+    if ($draggingItem.id) {
+      // It's a table based drag
+      const tableId = $draggingItem.id;
 
-            // Let's assume the .floor-plan (inner) is the target
-            const floorInternal = document.querySelector(".floor-plan");
-            if (floorInternal) {
-              const internalRect = floorInternal.getBoundingClientRect();
-              const finalX = e.clientX - internalRect.left;
-              const finalY = e.clientY - internalRect.top;
+      // Let's assume the .floor-plan (inner) is the target
+      const floorInternal = document.querySelector(".floor-plan");
+      if (floorInternal) {
+        const internalRect = floorInternal.getBoundingClientRect();
+        const finalX = e.clientX - internalRect.left;
+        const finalY = e.clientY - internalRect.top;
 
-              // Valid drop?
-              if (finalX > 0 && finalX < 1000 && finalY > 0 && finalY < 600) {
-                tables.update((curr) =>
-                  curr.map((t) => {
-                    if (t.id === tableId) {
-                      // Center table on cursor
-                      return {
-                        ...t,
-                        x: finalX - 70,
-                        y: finalY - 35,
-                        placed: true,
-                      };
-                    }
-                    return t;
-                  }),
-                );
+        // Valid drop?
+        // internalRect is the SCALED size.
+        // 1000 * scale is the visual width.
+        if (
+          finalX > 0 &&
+          finalX < internalRect.width &&
+          finalY > 0 &&
+          finalY < internalRect.height
+        ) {
+          tables.update((curr) =>
+            curr.map((t) => {
+              if (t.id === tableId) {
+                // Center table on cursor, transformed to internal coordinates
+                return {
+                  ...t,
+                  x: finalX / scale - 47,
+                  y: finalY / scale - 23.5,
+                  placed: true,
+                };
               }
-            }
-          }
+              return t;
+            }),
+          );
+          // Don't open popup on drop from staging
         }
       }
     }
+
     draggingItem.set(null);
   }
 </script>
@@ -86,7 +130,8 @@
 <svelte:window
   on:mousemove={(e) => {
     if ($draggingItem && $draggingItem.id) {
-      moveTable($draggingItem.id, e.movementX, e.movementY);
+      // Adjust movement by scale to keep 1:1 mouse-to-object tracking visually
+      moveTable($draggingItem.id, e.movementX / scale, e.movementY / scale);
     }
   }}
   on:mouseup={handleMouseUp}
@@ -114,7 +159,7 @@
     </div>
 
     <div class="canvas-area-centered">
-      <FloorPlan />
+      <FloorPlan bind:scale onTableClick={openConfigPopup} />
     </div>
 
     <div class="options-bar-container">
@@ -126,6 +171,49 @@
   </main>
 </div>
 
+{#if showConfigPopup}
+  <div
+    class="config-overlay"
+    on:click={closeConfigPopup}
+    role="dialog"
+    aria-modal="true"
+  >
+    <div class="config-popup" on:click|stopPropagation role="document">
+      <div class="config-field">
+        <input
+          id="table-label"
+          type="text"
+          bind:value={tempLabel}
+          placeholder="Etiqueta"
+        />
+      </div>
+
+      <div class="config-actions">
+        <button
+          on:click={() => setConfigTableType("6")}
+          class:active={$tables.find((t) => t.id === configTableId)?.type ===
+            "6"}
+          title="6 Sillas"
+        >
+          6
+        </button>
+        <button
+          on:click={() => setConfigTableType("8")}
+          class:active={$tables.find((t) => t.id === configTableId)?.type ===
+            "8"}
+          title="8 Sillas"
+        >
+          8
+        </button>
+        <button on:click={rotateConfigTable} title="Girar 45°"> ↻ </button>
+        <button on:click={saveTableConfig} class="save-btn" title="Guardar">
+          ✓
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <style>
   :global(body) {
     margin: 0;
@@ -136,7 +224,7 @@
 
   .app-container {
     width: 100%;
-    max-width: 1920px;
+    min-width: 1600px;
     height: 100vh;
     display: flex;
     flex-direction: column;
@@ -148,7 +236,7 @@
   }
 
   .app-header {
-    height: 12%;
+    height: 10%;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -189,7 +277,7 @@
 
   /* Row 1: Input Container */
   .input-container {
-    height: 100px;
+    height: 180px;
     width: 100%;
     flex-shrink: 0;
     z-index: 10;
@@ -255,5 +343,83 @@
     font-size: 2rem;
     margin-left: -30px;
     margin-top: -30px;
+  }
+
+  /* Configuration Popup */
+  .config-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+  }
+
+  .config-popup {
+    background: rgba(44, 44, 44, 0.95);
+    border-radius: 12px;
+    padding: 20px;
+    min-width: 280px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .config-field {
+    margin-bottom: 12px;
+  }
+
+  .config-field input {
+    width: 100%;
+    padding: 10px 12px;
+    background: rgba(30, 30, 30, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    color: white;
+    font-size: 1rem;
+  }
+
+  .config-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+
+  .config-actions button {
+    width: 50px;
+    height: 50px;
+    background: rgba(68, 68, 68, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-size: 1.2rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .config-actions button:hover {
+    background: rgba(85, 85, 85, 0.9);
+    transform: scale(1.05);
+  }
+
+  .config-actions button.active {
+    background: rgba(243, 129, 129, 0.9);
+    border-color: #f38181;
+  }
+
+  .config-actions button.save-btn {
+    background: rgba(76, 175, 80, 0.9);
+    border-color: #4caf50;
+  }
+
+  .config-actions button.save-btn:hover {
+    background: rgba(102, 187, 106, 0.9);
   }
 </style>

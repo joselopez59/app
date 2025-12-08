@@ -1,10 +1,34 @@
 <script lang="ts">
     import { tables, djPosition, fotoBoxPosition } from "../lib/stores";
     import TableComponent from "./Table.svelte";
+
+    export let scale = 1;
+    export let onTableClick: ((id: number) => void) | undefined = undefined;
+
+    let containerWidth = 1000;
+    let containerHeight = 600;
+
+    $: {
+        const padding = 20;
+        const availableWidth = containerWidth - padding;
+        const availableHeight = containerHeight - padding;
+
+        const scaleX = availableWidth / 1000;
+        const scaleY = availableHeight / 600;
+
+        scale = Math.min(scaleX, scaleY);
+    }
 </script>
 
-<div class="floor-plan-container">
-    <div class="floor-plan">
+<div
+    class="floor-plan-container"
+    bind:clientWidth={containerWidth}
+    bind:clientHeight={containerHeight}
+>
+    <div
+        class="floor-plan"
+        style="transform: scale({scale}); transform-origin: center center;"
+    >
         <!-- Room SVG Structure -->
         <svg
             class="room-structure"
@@ -194,7 +218,7 @@
         </svg>
 
         {#each $tables.filter((t) => t.placed) as table (table.id)}
-            <TableComponent {table} />
+            <TableComponent {table} {onTableClick} />
         {/each}
 
         {#if $djPosition}

@@ -9,11 +9,25 @@
     let menuX = 0;
     let menuY = 0;
 
+    export let onTableClick: ((id: number) => void) | undefined = undefined;
+
     function handleMouseDown(e: MouseEvent) {
         if (e.button === 0) {
             // Left click
-            // In staging, start "new" drag logic or just drag existing
-            draggingItem.set({ id: table.id });
+            if (table.placed && !relative) {
+                // For placed tables, just start dragging
+                draggingItem.set({ id: table.id });
+            } else {
+                // For staging tables, start drag
+                draggingItem.set({ id: table.id });
+            }
+        }
+    }
+
+    function handleClick(e: MouseEvent) {
+        if (table.placed && !relative && onTableClick) {
+            e.stopPropagation();
+            onTableClick(table.id);
         }
     }
 
@@ -39,7 +53,7 @@
     }
 
     function rotate() {
-        const newRot = (table.rotation + 90) % 360;
+        const newRot = (table.rotation + 45) % 360;
         updateTable({ ...table, rotation: newRot });
     }
 
@@ -67,12 +81,15 @@
     class:relative
     style={relative ? "" : `left: ${table.x}px; top: ${table.y}px;`}
     on:mousedown={handleMouseDown}
+    on:click={handleClick}
     on:contextmenu={handleContextMenu}
     role="button"
     tabindex="0"
 >
-    <!-- Label -->
-    <div class="table-label">{table.label}</div>
+    <!-- Label - only show if not empty, centered on table -->
+    {#if table.label}
+        <div class="table-label-centered">{table.label}</div>
+    {/if}
 
     <!-- Rotated Container -->
     <div class="table-body" style="transform: rotate({table.rotation}deg);">
@@ -145,6 +162,7 @@
         flex-direction: column;
         align-items: center;
         z-index: 10;
+        overflow: visible; /* Ensure chairs are not clipped */
     }
 
     .table-wrapper.relative {
@@ -153,6 +171,11 @@
         top: auto !important;
         margin: 0 10px;
         transform: scale(0.8); /* Smaller in sidebar */
+    }
+
+    /* Apply same scale to placed tables on floor plan */
+    .table-wrapper:not(.relative) {
+        transform: scale(0.8);
     }
 
     .table-wrapper:active {
@@ -171,14 +194,31 @@
         pointer-events: none;
     }
 
+    .table-label-centered {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        white-space: nowrap;
+        text-shadow: 0 1px 2px black;
+        pointer-events: none;
+        z-index: 10;
+    }
+
     .table-body {
         transition: transform 0.2s ease-out;
+        overflow: visible; /* Ensure chairs are not clipped */
     }
 
     .table-surface {
-        /* Reduced size as requested */
-        width: 140px;
-        height: 70px;
+        /* Default size for 8-chair tables - 33% smaller */
+        width: 94px; /* 140px * 0.67 = 93.8px */
+        height: 47px; /* 70px * 0.67 = 46.9px */
         background-color: #5d4037;
         border: 2px solid #3e2723;
         border-radius: 6px;
@@ -187,18 +227,33 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        overflow: visible; /* Ensure chairs outside table are visible */
     }
 
-    /* Chair Styles - Slightly larger */
+    /* 6-chair tables are 30% narrower */
+    .table-surface.type-6 {
+        width: 66px; /* 98px * 0.67 = 65.66px */
+    }
+
+    /* Chair Styles - Square chairs - 33% smaller */
     .chair,
     .chair-side {
-        width: 24px;
-        height: 24px;
+        width: 16px; /* 24px * 0.67 = 16.08px */
+        height: 16px;
         background-color: #8d6e63;
         border: 1px solid #4e342e;
-        border-radius: 50%; /* Round chairs */
-        position: absolute;
+        border-radius: 3px; /* Square chairs with slight rounding */
         box-shadow: 1px 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Chairs in rows use relative positioning for flexbox */
+    .chair {
+        position: relative;
+    }
+
+    /* Side chairs use absolute positioning */
+    .chair-side {
+        position: absolute;
     }
 
     /* Chair Positioning */
@@ -217,21 +272,22 @@
     }
 
     .chairs-row.top {
-        top: -20px;
+        top: -18px; /* Adjusted for smaller chairs */
     }
     .chairs-row.bottom {
-        bottom: -20px;
+        bottom: -18px;
     }
 
     .chair-side {
+        position: absolute;
         top: 50%;
         transform: translateY(-50%);
     }
     .chair-side.left {
-        left: -20px;
+        left: -18px; /* Adjusted for smaller chairs */
     }
     .chair-side.right {
-        right: -20px;
+        right: -18px;
     }
 
     /* Context Menu */

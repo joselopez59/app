@@ -2,7 +2,7 @@
     import {
         tables,
         persons,
-        autoConfigureTables,
+        updateStagingTables,
         draggingItem,
     } from "../lib/stores";
     import Thumbwheel from "./Thumbwheel.svelte";
@@ -11,14 +11,31 @@
     // Staging tables: not yet placed
     $: stagingTables = $tables.filter((t) => !t.placed);
 
+    // Initial load
+    $: updateStagingTables($persons);
+
+    function handleChange(val: number) {
+        updateStagingTables(val);
+    }
+
     function reset() {
-        autoConfigureTables($persons);
+        // Clear all placed tables or just reset everything?
+        // User asked: "When Thumbwheel changes, tables update."
+        // Reset usually means "Clear FloorPlan".
+        // Let's clear placed but keep staging synced to persons.
+        tables.update((curr) => curr.map((t) => ({ ...t, placed: false })));
+        // Then re-sync staging (which might clean up the now-unplaced ones if they exceed count? No, logic handles unplaced.)
+        // Actually updateStagingTables logic:
+        // "needed = target - placed". If we unplace all, placed=0. needed=target.
+        // It will ensure we have 'target' unplaced tables.
+        // But we just unplaced 40 people worth of tables. So we have 'target' unplaced tables.
+        // updateStagingTables will see we have enough (or too many?)
+        // Let's just call it.
+        updateStagingTables($persons);
     }
 
     function handleStartDrag(e: MouseEvent, tableId: number) {
         if (e.button !== 0) return;
-        // Start drag of a NEW instance from staging
-        // Actually, we are just dragging the existing unplaced table
         draggingItem.set({ id: tableId });
     }
 </script>
@@ -26,7 +43,10 @@
 <div class="sidebar-container">
     <!-- Left: Thumbwheel -->
     <div class="thumbwheel-section">
-        <Thumbwheel bind:value={$persons} on:change={reset} />
+        <Thumbwheel
+            bind:value={$persons}
+            on:change={(e) => handleChange(e.detail)}
+        />
     </div>
 
     <!-- Center: Info & Reset -->
@@ -34,10 +54,7 @@
         <div class="table-count">
             {$tables.length} Tische
         </div>
-        <button class="reset-btn" on:click={reset}>
-            RESET
-            <span class="subtext">Alle Löschen</span>
-        </button>
+        <button class="reset-btn" on:click={reset}> RESET </button>
     </div>
 
     <!-- Right: Staging Area Slider -->
@@ -95,10 +112,6 @@
         flex-direction: column;
         align-items: center;
         line-height: 1.1;
-    }
-    .reset-btn .subtext {
-        font-size: 0.7rem;
-        opacity: 0.8;
     }
     .reset-btn:hover {
         background: #d32f2f;
