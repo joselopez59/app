@@ -4,6 +4,13 @@
         persons,
         updateStagingTables,
         draggingItem,
+        djPosition,
+        fotoBoxPosition,
+        fotografPosition,
+        geschenketischPosition,
+        tischRoyalPosition,
+        podiumPosition,
+        tanzflachePosition,
     } from "../lib/stores";
     import Thumbwheel from "./Thumbwheel.svelte";
     import TableComponent from "./Table.svelte";
@@ -19,18 +26,19 @@
     }
 
     function reset() {
-        // Clear all placed tables or just reset everything?
-        // User asked: "When Thumbwheel changes, tables update."
-        // Reset usually means "Clear FloorPlan".
-        // Let's clear placed but keep staging synced to persons.
+        // Clear all placed tables - return them to staging area
         tables.update((curr) => curr.map((t) => ({ ...t, placed: false })));
-        // Then re-sync staging (which might clean up the now-unplaced ones if they exceed count? No, logic handles unplaced.)
-        // Actually updateStagingTables logic:
-        // "needed = target - placed". If we unplace all, placed=0. needed=target.
-        // It will ensure we have 'target' unplaced tables.
-        // But we just unplaced 40 people worth of tables. So we have 'target' unplaced tables.
-        // updateStagingTables will see we have enough (or too many?)
-        // Let's just call it.
+
+        // Clear all item positions - return them to options panel
+        djPosition.set(null);
+        fotoBoxPosition.set(null);
+        fotografPosition.set(null);
+        geschenketischPosition.set(null);
+        tischRoyalPosition.set(null);
+        podiumPosition.set(null);
+        tanzflachePosition.set(null);
+
+        // Re-sync staging tables
         updateStagingTables($persons);
     }
 

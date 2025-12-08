@@ -5,6 +5,7 @@ export interface Table {
     x: number;
     y: number;
     type: '6' | '8';
+    chairCount: number; // Actual number of chairs to display
     rotation: number;
     label: string;
     typeLocked: boolean;
@@ -13,7 +14,7 @@ export interface Table {
 
 export interface DragItem {
     id?: number;
-    type?: 'dj' | 'fotobox';
+    type?: 'dj' | 'fotobox' | 'fotograf' | 'geschenketisch' | 'tischroyal' | 'podium' | 'tanzflache';
 }
 
 export const persons = writable<number>(40);
@@ -21,18 +22,30 @@ export const persons = writable<number>(40);
 // Initialize tables with default staging tables
 const initialTables: Table[] = [];
 const defaultPersons = 40;
-const neededTablesCount = Math.ceil(defaultPersons / 8);
-for (let i = 0; i < neededTablesCount; i++) {
+let remainingChairs = defaultPersons;
+let tableIndex = 0;
+
+while (remainingChairs > 0) {
+    let chairCount = Math.min(remainingChairs, 6);
+    if (remainingChairs >= 7) {
+        chairCount = Math.min(remainingChairs, 8);
+    }
+    const tableType: '6' | '8' = chairCount >= 7 ? '8' : '6';
+
     initialTables.push({
-        id: Date.now() + i,
+        id: Date.now() + tableIndex,
         x: 0,
         y: 0,
-        type: '8',
+        type: tableType,
+        chairCount: chairCount,
         rotation: 0,
         label: '',
         typeLocked: false,
         placed: false
     });
+
+    remainingChairs -= chairCount;
+    tableIndex++;
 }
 
 export const tables = writable<Table[]>(initialTables);
@@ -41,8 +54,13 @@ export const tables = writable<Table[]>(initialTables);
 export const draggingItem = writable<DragItem | null>(null);
 
 // Positions for extra items
-export const djPosition = writable<{ x: number, y: number } | null>(null);
-export const fotoBoxPosition = writable<{ x: number, y: number } | null>(null);
+export const djPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const fotoBoxPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const fotografPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const geschenketischPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const tischRoyalPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const podiumPosition = writable<{ x: number, y: number, rotation: number } | null>(null);
+export const tanzflachePosition = writable<{ x: number, y: number, rotation: number } | null>(null);
 
 // Table configuration constants
 const TABLE_WIDTH = 140;
@@ -53,42 +71,46 @@ export function updateStagingTables(targetPersons: number) {
     tables.update(currentTables => {
         // 1. Calculate current capacity of PLACED tables
         const placedTables = currentTables.filter(t => t.placed);
-        const placedCapacity = placedTables.reduce((sum, t) => sum + (t.type === '8' ? 8 : 6), 0);
+        const placedCapacity = placedTables.reduce((sum, t) => sum + t.chairCount, 0);
 
         // 2. Calculate needed capacity
         const neededCapacity = Math.max(0, targetPersons - placedCapacity);
 
-        // 3. Keep existing unplaced tables, but adjust count
-        // Note: For simplicity, we assume we fill gap with 8-seaters primarily
-        const neededTablesCount = Math.ceil(neededCapacity / SEATS_PER_8);
+        // 3. Build new staging tables with dynamic chair counts
+        const newStagingTables: Table[] = [];
+        let remainingChairs = neededCapacity;
+        let tableIndex = 0;
 
-        const stagingTables = currentTables.filter(t => !t.placed);
+        while (remainingChairs > 0) {
+            // Determine chair count for this table
+            let chairCount = Math.min(remainingChairs, 6); // Start with up to 6 chairs
 
-        if (stagingTables.length < neededTablesCount) {
-            // Add tables
-            const toAdd = neededTablesCount - stagingTables.length;
-            for (let i = 0; i < toAdd; i++) {
-                currentTables.push({
-                    id: Date.now() + Math.random(), // Random to ensure uniqueness
-                    x: 0,
-                    y: 0,
-                    type: '8',
-                    rotation: 0,
-                    label: '',
-                    typeLocked: false,
-                    placed: false
-                });
+            // If we need 7 or more chairs, use type 8 table
+            if (remainingChairs >= 7) {
+                chairCount = Math.min(remainingChairs, 8);
             }
-        } else if (stagingTables.length > neededTablesCount) {
-            // Remove tables (from the end of unplaced list to avoid jitter?)
-            // actually filter out the extras
-            const toRemoveCount = stagingTables.length - neededTablesCount;
-            // Identification of IDs to remove (LIFO)
-            const idsToRemove = stagingTables.slice(stagingTables.length - toRemoveCount).map(t => t.id);
-            currentTables = currentTables.filter(t => !idsToRemove.includes(t.id));
+
+            // Determine table type based on chair count
+            const tableType: '6' | '8' = chairCount >= 7 ? '8' : '6';
+
+            newStagingTables.push({
+                id: Date.now() + Math.random() + tableIndex,
+                x: 0,
+                y: 0,
+                type: tableType,
+                chairCount: chairCount,
+                rotation: 0,
+                label: '',
+                typeLocked: false,
+                placed: false
+            });
+
+            remainingChairs -= chairCount;
+            tableIndex++;
         }
 
-        return currentTables;
+        // 4. Return placed tables + new staging tables
+        return [...placedTables, ...newStagingTables];
     });
 }
 

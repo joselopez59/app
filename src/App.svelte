@@ -2,12 +2,20 @@
   import Sidebar from "./components/Sidebar.svelte";
   import FloorPlan from "./components/FloorPlan.svelte";
   import OptionsPanel from "./components/OptionsPanel.svelte";
+  import { get } from "svelte/store";
   import {
     draggingItem,
     moveTable,
     djPosition,
     fotoBoxPosition,
+    fotografPosition,
+    geschenketischPosition,
+    tischRoyalPosition,
+    podiumPosition,
+    tanzflachePosition,
     tables,
+    persons,
+    updateStagingTables,
   } from "./lib/stores";
   import { followMouse } from "./lib/actions";
   import MonbergLogo from "./assets/Monberg-Logo-weiss.svg";
@@ -57,16 +65,60 @@
 
   function setConfigTableType(type: "6" | "8") {
     if (configTableId !== null) {
-      tables.update((curr) =>
-        curr.map((t) => (t.id === configTableId ? { ...t, type } : t)),
-      );
+      tables.update((curr) => {
+        const targetTable = curr.find((t) => t.id === configTableId);
+        if (!targetTable) return curr;
+
+        const currentChairs = targetTable.chairCount;
+        const newMaxChairs = type === "8" ? 8 : 6;
+
+        // If changing to type 8 and need more chairs
+        if (type === "8" && currentChairs < 8) {
+          const neededChairs = 8 - currentChairs;
+
+          // Find staging tables sorted by chair count (ascending)
+          const stagingTables = curr
+            .filter((t) => !t.placed)
+            .sort((a, b) => a.chairCount - b.chairCount);
+
+          let chairsToTake = neededChairs;
+          const updatedTables = curr.map((t) => {
+            if (t.id === configTableId) {
+              return { ...t, type, chairCount: currentChairs + neededChairs };
+            }
+            // Take chairs from staging tables with fewest chairs
+            if (!t.placed && chairsToTake > 0 && t.chairCount > 0) {
+              const canTake = Math.min(chairsToTake, t.chairCount);
+              chairsToTake -= canTake;
+              return { ...t, chairCount: t.chairCount - canTake };
+            }
+            return t;
+          });
+
+          // Filter out tables with 0 chairs
+          return updatedTables.filter((t) => t.placed || t.chairCount > 0);
+        } else {
+          // Just change type and adjust chairCount to max
+          return curr.map((t) => {
+            if (t.id === configTableId) {
+              const newChairCount = Math.min(t.chairCount, newMaxChairs);
+              return { ...t, type, chairCount: newChairCount };
+            }
+            return t;
+          });
+        }
+      });
+
+      // Recalculate staging tables to match total persons
+      const currentPersons = get(persons);
+      updateStagingTables(currentPersons);
     }
   }
 
   function handleMouseUp(e: MouseEvent) {
     if (!$draggingItem) return;
 
-    if ($draggingItem.type === "dj" || $draggingItem.type === "fotobox") {
+    if ($draggingItem.type) {
       const floorPlan = document.querySelector(".floor-plan");
       if (floorPlan) {
         const rect = floorPlan.getBoundingClientRect();
@@ -77,7 +129,53 @@
           e.clientY >= rect.top &&
           e.clientY <= rect.bottom
         ) {
-          // Logic for dropping extra items if verification needed
+          // Place item on the floor plan
+          const finalX = (e.clientX - rect.left) / scale;
+          const finalY = (e.clientY - rect.top) / scale;
+
+          if ($draggingItem.type === "dj") {
+            djPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "fotobox") {
+            fotoBoxPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "fotograf") {
+            fotografPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "geschenketisch") {
+            geschenketischPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "tischroyal") {
+            tischRoyalPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "podium") {
+            podiumPosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          } else if ($draggingItem.type === "tanzflache") {
+            tanzflachePosition.update((pos) => ({
+              x: finalX - 50,
+              y: finalY - 40,
+              rotation: pos?.rotation ?? 0,
+            }));
+          }
         }
       }
 

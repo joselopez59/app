@@ -11,9 +11,16 @@
 
     export let onTableClick: ((id: number) => void) | undefined = undefined;
 
+    let mouseDownPos = { x: 0, y: 0 };
+    let hasDragged = false;
+
     function handleMouseDown(e: MouseEvent) {
         if (e.button === 0) {
-            // Left click
+            // Record mouse position
+            mouseDownPos = { x: e.clientX, y: e.clientY };
+            hasDragged = false;
+
+            // Left click - start dragging
             if (table.placed && !relative) {
                 // For placed tables, just start dragging
                 draggingItem.set({ id: table.id });
@@ -25,7 +32,14 @@
     }
 
     function handleClick(e: MouseEvent) {
-        if (table.placed && !relative && onTableClick) {
+        // Calculate distance moved
+        const distance = Math.sqrt(
+            Math.pow(e.clientX - mouseDownPos.x, 2) +
+                Math.pow(e.clientY - mouseDownPos.y, 2),
+        );
+
+        // Only trigger click if moved less than 5 pixels (not a drag)
+        if (table.placed && !relative && onTableClick && distance < 5) {
             e.stopPropagation();
             onTableClick(table.id);
         }
@@ -87,41 +101,75 @@
     tabindex="0"
 >
     <!-- Label - only show if not empty, centered on table -->
-    {#if table.label}
-        <div class="table-label-centered">{table.label}</div>
-    {/if}
+    <!-- Label is now inside the rotated container so it rotates with the table -->
 
     <!-- Rotated Container -->
     <div class="table-body" style="transform: rotate({table.rotation}deg);">
+        {#if table.label}
+            <div class="table-label-centered">{table.label}</div>
+        {/if}
         <!-- Table Top -->
         <div class="table-surface type-{table.type}">
-            <!-- Chairs Generation -->
-            {#if table.type === "8"}
-                <!-- 3 Top, 3 Bottom, 1 Left, 1 Right -->
-                <div class="chairs-row top">
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                </div>
-                <div class="chairs-row bottom">
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                </div>
-                <div class="chair-side left"></div>
-                <div class="chair-side right"></div>
-            {:else}
-                <!-- Type 6: 2 Top, 2 Bottom, 1 Left, 1 Right -->
-                <div class="chairs-row top justify-center">
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                </div>
-                <div class="chairs-row bottom justify-center">
-                    <div class="chair"></div>
-                    <div class="chair"></div>
-                </div>
-                <div class="chair-side left"></div>
-                <div class="chair-side right"></div>
+            <!-- Chairs Generation - Dynamic based on chairCount -->
+            {#if table.chairCount > 0}
+                {@const topChairs =
+                    table.type === "8"
+                        ? Math.min(3, Math.ceil((table.chairCount - 2) / 2))
+                        : Math.min(
+                              2,
+                              Math.max(
+                                  0,
+                                  Math.ceil((table.chairCount - 2) / 2),
+                              ),
+                          )}
+                {@const bottomChairs =
+                    table.type === "8"
+                        ? Math.min(3, Math.floor((table.chairCount - 2) / 2))
+                        : Math.min(
+                              2,
+                              Math.max(
+                                  0,
+                                  Math.floor((table.chairCount - 2) / 2),
+                              ),
+                          )}
+                {@const leftChair =
+                    table.chairCount > topChairs + bottomChairs ? 1 : 0}
+                {@const rightChair =
+                    table.chairCount > topChairs + bottomChairs + leftChair
+                        ? 1
+                        : 0}
+
+                <!-- Top chairs -->
+                {#if topChairs > 0}
+                    <div
+                        class="chairs-row top"
+                        class:justify-center={table.type === "6"}
+                    >
+                        {#each Array(topChairs) as _, i}
+                            <div class="chair"></div>
+                        {/each}
+                    </div>
+                {/if}
+
+                <!-- Bottom chairs -->
+                {#if bottomChairs > 0}
+                    <div
+                        class="chairs-row bottom"
+                        class:justify-center={table.type === "6"}
+                    >
+                        {#each Array(bottomChairs) as _, i}
+                            <div class="chair"></div>
+                        {/each}
+                    </div>
+                {/if}
+
+                <!-- Side chairs -->
+                {#if leftChair > 0}
+                    <div class="chair-side left"></div>
+                {/if}
+                {#if rightChair > 0}
+                    <div class="chair-side right"></div>
+                {/if}
             {/if}
         </div>
     </div>
@@ -268,7 +316,7 @@
 
     .chairs-row.justify-center {
         justify-content: space-around;
-        padding: 0 20px;
+        padding: 0 8px; /* Reduced to give more space between chairs on 6-seat tables */
     }
 
     .chairs-row.top {

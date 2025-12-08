@@ -1,7 +1,26 @@
 <script lang="ts">
-    import { draggingItem } from "../lib/stores";
+    import {
+        draggingItem,
+        djPosition,
+        fotoBoxPosition,
+        fotografPosition,
+        geschenketischPosition,
+        tischRoyalPosition,
+        podiumPosition,
+        tanzflachePosition,
+    } from "../lib/stores";
 
-    function startDrag(e: MouseEvent, type: "dj" | "fotobox") {
+    function startDrag(
+        e: MouseEvent,
+        type:
+            | "dj"
+            | "fotobox"
+            | "fotograf"
+            | "geschenketisch"
+            | "tischroyal"
+            | "podium"
+            | "tanzflache",
+    ) {
         e.preventDefault();
         // Logic for dragging: we set the store, and App.svelte handles the movement overlay
         draggingItem.set({ type });
@@ -9,15 +28,89 @@
 </script>
 
 <div class="options-panel-horizontal">
-    <div class="option-item" on:mousedown={(e) => startDrag(e, "dj")}>
-        <span class="icon">🎧</span>
-        <span class="label">DJ Pult</span>
-    </div>
+    {#if !$djPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "dj")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">DJ Pult</span>
+            <span class="icon">🎧</span>
+        </div>
+    {/if}
 
-    <div class="option-item" on:mousedown={(e) => startDrag(e, "fotobox")}>
-        <span class="icon">📸</span>
-        <span class="label">Fotobox</span>
-    </div>
+    {#if !$fotoBoxPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "fotobox")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Fotobox</span>
+            <span class="icon">📸</span>
+        </div>
+    {/if}
+
+    {#if !$fotografPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "fotograf")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Fotograf</span>
+            <span class="icon">🤳</span>
+        </div>
+    {/if}
+
+    {#if !$geschenketischPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "geschenketisch")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Geschenketisch</span>
+            <span class="icon">🎁</span>
+        </div>
+    {/if}
+
+    {#if !$tischRoyalPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "tischroyal")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Tisch Royal</span>
+            <span class="icon">👑</span>
+        </div>
+    {/if}
+
+    {#if !$podiumPosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "podium")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Podium</span>
+            <span class="icon">🎭</span>
+        </div>
+    {/if}
+
+    {#if !$tanzflachePosition}
+        <div
+            class="option-item"
+            on:mousedown={(e) => startDrag(e, "tanzflache")}
+            role="button"
+            tabindex="0"
+        >
+            <span class="label">Tanzfläche</span>
+            <span class="icon">💃</span>
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -38,11 +131,12 @@
         background: #2c2c2c;
         border: 1px solid #333;
         border-radius: 8px;
-        padding: 0.5rem 1.5rem;
+        padding: 1rem 1.5rem;
         cursor: grab;
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.8rem;
+        gap: 0.5rem;
         transition:
             transform 0.2s,
             background-color 0.2s;
@@ -61,7 +155,7 @@
     }
 
     .icon {
-        font-size: 1.5rem;
+        font-size: 2rem;
     }
 
     .label {
